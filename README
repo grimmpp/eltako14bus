@@ -1,0 +1,4 @@
+This is part of the reverse engineering approach that'd allow using Eltako
+Series 14 devices w/o a FAM.
+
+It utilizes a CoAP raw ESP2 interface.
