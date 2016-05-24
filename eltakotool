@@ -2,8 +2,10 @@
 
 import argparse
 import asyncio
+import os
 
 import aiocoap
+import serial
 
 def b2a(rawdata):
     # like binascii.b2a_hex, but directly to unicode for printing, and with nice spacing
@@ -27,6 +29,18 @@ async def exchange(context, address, request, responsetype):
         else:
             raise TimeoutError
         raise
+
+def prettify(message):
+    try: return EltakoDiscoveryReply.parse(message.serialize())
+    except ParseError: pass
+
+    try: return EltakoTimeout.parse(message.serialize())
+    except ParseError: pass
+
+    try: return EltakoMessage.parse(message.serialize())
+    except ParseError: pass
+
+    return message
 
 class ESP2Message:
     def __init__(self, body):
@@ -118,6 +132,9 @@ class EltakoTimeout(EltakoMessage):
             raise ParseError("Does not look like an EltakoTimeout")
         return EltakoTimeout()
 
+    def __repr__(self):
+        return "<%s>"%type(self).__name__
+
 async def enumerate(context, address):
     print("Scanning the bus for devices with addresses...")
     usage_map = [None]
@@ -158,22 +175,28 @@ async def enumerate(context, address):
             assert response.reported_address == i, "Assigning bus number %d resulted in response %r"%(i, response)
             print("The device was assigned bus address %d. You may now put a further device into LRN mode."%i)
 
-async def assign(context, address, new_busaddress):
-    eltako_request = EltakoMessage(org=0xf0, address=0)
+async def fakefam(context, address, serverdevice):
+    s = serial.Serial(serverdevice, baudrate=57600)
+    loop = asyncio.get_event_loop()
+    q = asyncio.Queue(loop=loop)
+    loop.add_reader(s.fileno(), lambda: q.put_nowait(os.read(s.fileno(), 1024)))
 
-    request = aiocoap.Message(code=aiocoap.POST, uri=address, payload=eltako_request.serialize())
-    response = await context.request(request).response
+    buffered = b""
 
-    eltako_response = EltakoMessage.parse(response.payload)
-    print(eltako_response)
+    while True:
+        buffered += await q.get()
+        while len(buffered) >= 14:
+            try:
+                parsed = ESP2Message.parse(buffered[:14])
+            except ParseError:
+                buffered = buffered[1:]
+            else:
+                buffered = buffered[14:]
 
-    eltako_request = EltakoMessage(org=0xf8, address=new_busaddress)
-
-    request = aiocoap.Message(code=aiocoap.POST, uri=address, payload=eltako_request.serialize())
-    response = await context.request(request).response
-
-    eltako_response = EltakoMessage.parse(response.payload)
-    print(eltako_response)
+                response = await exchange(context, address, parsed, ESP2Message)
+                print(prettify(parsed), prettify(response))
+                await asyncio.sleep(0.5)
+                s.write(response.serialize())
 
 def main():
     p = argparse.ArgumentParser()
@@ -196,8 +219,8 @@ def main():
     context = loop.run_until_complete(aiocoap.Context.create_client_context())
     if opts.command == "enumerate":
         loop.run_until_complete(enumerate(context, opts.rawuri))
-    elif opts._command == "fakefam":
-        loop.run_until_complete(enumerate(context, opts.rawuri, opts.device))
+    elif opts.command == "fakefam":
+        loop.run_until_complete(fakefam(context, opts.rawuri, opts.device))
     else:
         raise RuntimeError("Additional command declared but not implemented.")
 
