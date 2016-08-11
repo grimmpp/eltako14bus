@@ -116,7 +116,8 @@ class EltakoDiscoveryReply(EltakoMessage):
         if eltakomessage.org != cls.org or eltakomessage.is_request != cls.is_request or eltakomessage.address != cls.address:
             raise ParseError("This is not an EltakoDiscoveryReply")
         if eltakomessage.payload[2:4] != b"\x7f\x08":
-            raise ParseError("Assumed fixed part 7F 08 not present")
+            print(ParseError("Assumed fixed part 7F 08 not present (found %02x %02x)"%tuple(eltakomessage.payload[2:4])))
+            #raise ParseError("Assumed fixed part 7F 08 not present (found %02x %02x)"%tuple(eltakomessage.payload[2:4]))
         reported_address = eltakomessage.payload[0]
         reported_size = eltakomessage.payload[1]
         model = eltakomessage.payload[4:8]
@@ -276,9 +277,18 @@ async def show_off(context, address, search_term=""):
                     print("I'e found a programmed universal dimmer state input, sending value %d"%dimming)
                     print(await(e(ESP2Message(b"\x0b\x07\x02" + bytes([dimming]) + b"\0\x09" + sender + b"\0"))))
 
-    class FSR14(BusObject): pass
+    class FSR14(BusObject):
+        size = 1
+    class FSR14_2x(BusObject):
+        size = 2
+    class F4SR14_LED(BusObject):
+        size = 4
     class F3Z14D(BusObject):
         size = 3
+    class FMZ14(BusObject):
+        size = 1
+    class FWG14MS(BusObject):
+        size = 1
     class FSU14(BusObject):
         size = 8
         async def show_off(self):
@@ -300,6 +310,10 @@ async def show_off(context, address, search_term=""):
     classes = {
             bytes((0x04, 0x04)): FUD14,
             bytes((0x04, 0x01)): FSR14,
+            bytes((0x04, 0x02)): FSR14_2x,
+            bytes((0x04, 0x09)): F4SR14_LED,
+            bytes((0x04, 0x0e)): FMZ14,
+            bytes((0x04, 0x1a)): FWG14MS,
             bytes((0x04, 0x67)): F3Z14D,
             bytes((0x07, 0x14)): FSU14,
             }
