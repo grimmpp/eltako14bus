@@ -5,6 +5,7 @@ import asyncio
 import functools
 import os
 import random
+import time
 
 import aiocoap
 import serial
@@ -235,8 +236,10 @@ async def fakefam(context, address, serverdevice):
             else:
                 buffered = buffered[14:]
 
-                response = await exchange(context, address, parsed, ESP2Message)
-                print(prettify(parsed), prettify(response))
+                start = time.time()
+                response = await e(parsed, ESP2Message)
+                end = time.time()
+                print(prettify(parsed), "(%.3fs)"%(end - start), prettify(response))
                 s.write(response.serialize())
 
 async def send_raw(context, address, data):
