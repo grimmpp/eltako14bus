@@ -40,6 +40,12 @@ async def exchange(context, address, request, responsetype=None):
         raise
 
 def prettify(message):
+    try: return EltakoFAMQuery.parse(message.serialize())
+    except ParseError: pass
+
+    try: return EltakoDiscoveryRequest.parse(message.serialize())
+    except ParseError: pass
+
     try: return EltakoDiscoveryReply.parse(message.serialize())
     except ParseError: pass
 
@@ -98,6 +104,44 @@ class EltakoMessage(ESP2Message):
     def __repr__(self):
         return "<%s %s ORG %02x ADDR %02x, %s>"%(type(self).__name__, ["Response", "Request"][self.is_request], self.org, self.address, b2a(self.payload))
 
+class EltakoStaticMessage(EltakoMessage):
+    """Base class for any kind of message that has no variance in it at all"""
+    def __init__(self):
+        pass
+
+    @classmethod
+    def parse(cls, data):
+        eltakomessage = super().parse(data)
+        if eltakomessage.org != cls.org or eltakomessage.is_request != cls.is_request or \
+                eltakomessage.payload != cls.payload or eltakomessage.address != cls.address:
+            raise ParseError("This is not an EltakoFAMQuery")
+        return cls()
+
+    def __repr__(self):
+        return "<%s>"%type(self).__name__
+
+class EltakoFAMQuery(EltakoStaticMessage):
+    org = 0xff
+    is_request = True
+    address = 0xff
+    payload = b"\0\0\0\0\0\0\0\0"
+
+class EltakoDiscoveryRequest(EltakoMessage):
+    org = 0xf0
+    is_request = True
+    payload = b"\0\0\0\0\0\0\0\0"
+
+    def __init__(self, address):
+        self.address = address
+
+    @classmethod
+    def parse(cls, data):
+        eltakomessage = super().parse(data)
+        if eltakomessage.org != cls.org or eltakomessage.is_request != cls.is_request or \
+                eltakomessage.payload != cls.payload:
+            raise ParseError("This is not an EltakoDiscoveryRequest")
+        return cls(eltakomessage.address)
+
 class EltakoDiscoveryReply(EltakoMessage):
     org = 0xf0
     is_request = False
@@ -126,24 +170,11 @@ class EltakoDiscoveryReply(EltakoMessage):
     def __repr__(self):
         return "<%s address %d size %d, model %s>"%(type(self).__name__, self.reported_address, self.reported_size, b2a(self.model))
 
-class EltakoTimeout(EltakoMessage):
+class EltakoTimeout(EltakoStaticMessage):
     org = 0xf8
     is_request = False
     payload = b"\0\0\0\0\0\0\0\0"
     address = 0
-
-    def __init__(self):
-        pass
-
-    @classmethod
-    def parse(cls, data):
-        esp2message = super().parse(data)
-        if esp2message.org != cls.org or esp2message.is_request != cls.is_request or esp2message.payload != cls.payload or esp2message.address != cls.address:
-            raise ParseError("Does not look like an EltakoTimeout")
-        return EltakoTimeout()
-
-    def __repr__(self):
-        return "<%s>"%type(self).__name__
 
 async def enumerate(context, address):
     print("Scanning the bus for devices with addresses...")
