@@ -10,6 +10,7 @@ import time
 import sys
 import pickle
 from typing import *
+import abc
 
 import aiocoap
 import serial
@@ -21,36 +22,61 @@ def b2a(rawdata):
 class ParseError(ValueError): """Raised by ESP2Message and similar's .parse() method when data is unexpected"""
 class TimeoutError(Exception): """Raised by exchange if the bus timeout is encountered, or a FAM responded with a timeout message."""
 
-async def exchange(context, address, request, responsetype=None):
-    """Send a request and get back a response. The response will be of
-    responsetype or (if None) any suitable ESP2Message subclass. If the
-    response type fails to parse the response because it is a timeout, a
-    TimeoutError will be raised instead of the expected ParseError."""
-    # FIXME this should do more error handling
-    coap_request = aiocoap.Message(code=aiocoap.POST, uri=address, payload=request.serialize())
-    coap_response = await context.request(coap_request).response
+class BusInterface(metaclass=abc.ABCMeta):
+    async def exchange(self, request, responsetype=None):
+        """Send a request and get back a response. The response will be of
+        responsetype or (if None) any suitable ESP2Message subclass. If the
+        response type fails to parse the response because it is a timeout, a
+        TimeoutError will be raised instead of the expected ParseError."""
 
-    if responsetype is None:
-        return prettify(ESP2Message.parse(coap_response.payload))
+        response = await self.base_exchange(request)
 
-    try:
-        return responsetype.parse(coap_response.payload)
-    except ParseError:
+        if responsetype is None:
+            return prettify(ESP2Message.parse(response))
+
         try:
-            EltakoTimeout.parse(coap_response.payload)
+            return responsetype.parse(response)
         except ParseError:
-            pass
-        else:
-            raise TimeoutError
-        raise
+            try:
+                EltakoTimeout.parse(response)
+            except ParseError:
+                pass
+            else:
+                raise TimeoutError
+            raise
 
-class BusCache:
+    @abc.abstractmethod
+    async def base_exchange(self, request):
+        """Exchange function without responsetype bells and whistles, returns
+        only a payload.
+
+        Right now, everyone implements this -- if it becomes practical that a
+        BusInterface does not, this function here should start raising
+        NotImplementedError, and users should fall back to
+        exchange().serialize(), or maybe this should provide that here."""
+
+class CoAPInterface(BusInterface):
+    def __init__(self, context, address):
+        self.context = context
+        self.address = address
+
+    async def base_exchange(self, request):
+        # FIXME this should do more error handling
+        coap_request = aiocoap.Message(code=aiocoap.POST, uri=self.address, payload=request.serialize())
+        coap_response = await self.context.request(coap_request).response
+
+        return coap_response.payload
+
+class BusCache(BusInterface):
     """Basic store of attributes on the bus that are not expected to change.
 
     This class takes care of the actual caching logic, but relies on subclasss
     to provide storage."""
 
-    async def exchange(self, context, address, request, responsetype=None):
+    def __init__(self, parent):
+        self.parent = parent
+
+    async def base_exchange(self, request, responsetype=None):
         pretty = prettify(request)
         key = None
         if isinstance(pretty, EltakoFAMQuery):
@@ -60,33 +86,24 @@ class BusCache:
         elif pretty.org == 0xf1:
             key = ('read', pretty.address, pretty.payload)
 
-        if key is None:
-            return await exchange(context, address, request, responsetype)
+        if key is None: # uncachable
+            return await self.parent.base_exchange(request, responsetype)
 
         if key not in self:
             try:
-                self[key] = (await exchange(context, address, request)).serialize()
+                self[key] = await self.parent.base_exchange(request)
             except TimeoutError:
                 self[key] = EltakoTimeout().serialize()
 
-        if responsetype is None:
-            return prettify(ESP2Message.parse(self[key]))
-        try:
-            return responsetype.parse(self[key])
-        except ParseError:
-            try:
-                EltakoTimeout.parse(self[key])
-            except ParseError:
-                pass
-            else:
-                raise TimeoutError
-            raise
+        return self[key]
 
 class RAMBusCache(dict, BusCache):
     pass
 
 class PickledBusCache(RAMBusCache):
-    def __init__(self, filename):
+    def __init__(self, parent, filename):
+        BusCache.__init__(self, parent)
+
         self._filename = filename
         if os.path.exists(filename):
             self.update(pickle.load(open(self._filename, 'rb')))
@@ -236,12 +253,12 @@ class EltakoTimeout(EltakoStaticMessage):
     payload = b"\0\0\0\0\0\0\0\0"
     address = 0
 
-async def enumerate(context, address):
+async def enumerate(bus):
     print("Scanning the bus for devices with addresses...")
     usage_map = [None]
     while len(usage_map) < 255:
         try:
-            response = await exchange(context, address, EltakoMessage(org=0xf0, address=len(usage_map)), EltakoDiscoveryReply)
+            response = await bus.exchange(EltakoMessage(org=0xf0, address=len(usage_map)), EltakoDiscoveryReply)
         except TimeoutError:
             usage_map.append(False)
         else:
@@ -256,7 +273,7 @@ async def enumerate(context, address):
     reported = False
     while True:
         try:
-            response = await exchange(context, address, EltakoMessage(org=0xf0, address=0), EltakoDiscoveryReply)
+            response = await bus.exchange(EltakoMessage(org=0xf0, address=0), EltakoDiscoveryReply)
         except TimeoutError:
             if reported is False:
                 print("You may now put a device into LRN mode to automatically assign an address.")
@@ -270,18 +287,18 @@ async def enumerate(context, address):
                 raise Exception("No suitable free space in usage map")
 
             usage_map[i:i+response.reported_size] = [True] * response.reported_size
-            response = await exchange(context, address, EltakoMessage(org=0xf8, address=i), EltakoDiscoveryReply)
+            response = await bus.exchange(EltakoMessage(org=0xf8, address=i), EltakoDiscoveryReply)
             if response.reported_address == 0:
                 print("Assigning may not have worked, marking area as dirty and trying again...")
                 continue
             assert response.reported_address == i, "Assigning bus number %d resulted in response %r"%(i, response)
             print("The device was assigned bus address %d. You may now put a further device into LRN mode."%i)
 
-async def preread(e):
+async def preread(bus):
     """Given a partial'd exchange function, read once through all addresses and all their memory content"""
     for i in range(255):
         try:
-            r = await e(EltakoDiscoveryRequest(address=i), EltakoDiscoveryReply)
+            r = await bus.exchange(EltakoDiscoveryRequest(address=i), EltakoDiscoveryReply)
         except TimeoutError:
             continue
 
@@ -289,21 +306,16 @@ async def preread(e):
         for j in range(255):
             print(".", end="")
             sys.stdout.flush()
-            await e(EltakoMessage(0xf1, i, bytes([0] * 7 + [j])))
+            await bus.exchange(EltakoMessage(0xf1, i, bytes([0] * 7 + [j])))
         print("", file=sys.stderr)
 
-async def fakefam(context, address, serverdevice, cachefile: Optional[str]):
+async def fakefam(bus, serverdevice):
     s = serial.Serial(serverdevice, baudrate=57600)
     loop = asyncio.get_event_loop()
     q = asyncio.Queue(loop=loop)
     loop.add_reader(s.fileno(), lambda: q.put_nowait(os.read(s.fileno(), 1024)))
 
-    if cachefile is None:
-        e = functools.Partial(exchange, context, address)
-    else:
-        e = functools.partial(PickledBusCache(cachefile).exchange, context, address)
-
-    await preread(e)
+    await preread(bus)
 
     buffered = b""
 
@@ -318,17 +330,17 @@ async def fakefam(context, address, serverdevice, cachefile: Optional[str]):
                 buffered = buffered[14:]
 
                 start = time.time()
-                response = await e(parsed, ESP2Message)
+                response = await bus.exchange(parsed, ESP2Message)
                 end = time.time()
                 print(prettify(parsed), "(%.3fs)"%(end - start), prettify(response))
                 s.write(response.serialize())
 
-async def send_raw(context, address, data):
-    print(prettify(await exchange(context, address, ESP2Message(bytes(data)), ESP2Message)))
+async def send_raw(bus, data):
+    print(prettify(await bus.exchange(ESP2Message(bytes(data)), ESP2Message)))
 
-async def unlock_bus(context, address):
+async def unlock_bus(bus):
     for i in range(5):
-        response = await exchange(context, address, EltakoMessage(0xff, 0x00), EltakoMessage)
+        response = await bus.exchange(EltakoMessage(0xff, 0x00), EltakoMessage)
         if response.org == 0xf0:
             print("FAM acknowledged return to regular operation (%s)"%response)
             return
@@ -336,12 +348,10 @@ async def unlock_bus(context, address):
             print("Unexpected response %r"%response)
     print("Sent some requests, but no acknowledgement from FAM; maybe we're bus master ourselves")
 
-async def show_off(context, address, search_term=""):
-    e = functools.partial(exchange, context, address)
-
+async def show_off(bus, search_term=""):
     print("Sending a lock command onto the bus; its reply should tell us whether there's a FAM in the game.")
     # more correct might be doing this until we get a response from a fam, or until we are sure we're the bus master ourselves
-    print(await e(EltakoMessage(0xff, 0xff)))
+    print(await bus.exchange(EltakoMessage(0xff, 0xff)))
 
     class BusObject:
         def __init__(self, response):
@@ -359,7 +369,7 @@ async def show_off(context, address, search_term=""):
             return "<%s at %d size %d version %s>"%(type(self).__name__, self.address, self.size, self.version)
         async def show_off(self):
             print("Identifying on the bus")
-            await e(EltakoMessage(0xfd, self.address))
+            await bus.exchange(EltakoMessage(0xfd, self.address))
             await asyncio.sleep(3)
     class FUD14(BusObject):
         size = 1
@@ -367,7 +377,7 @@ async def show_off(context, address, search_term=""):
             await super().show_off()
 
             print("Querying dimmer state")
-            response = await(e(EltakoMessage(0xfe, self.address), EltakoMessage))
+            response = await(bus.exchange(EltakoMessage(0xfe, self.address), EltakoMessage))
             # parsing A5-38-08 style data
             assert response.org == 0x07
             # parsing is a little funny here because while it's an RMT, it
@@ -383,14 +393,14 @@ async def show_off(context, address, search_term=""):
 
             print("Reading out input programming")
             for memory_id in range(12, 128):
-                response = await(e(EltakoMessage(0xf1, self.address, bytes([0]*7 + [memory_id])), EltakoMessage))
+                response = await(bus.exchange(EltakoMessage(0xf1, self.address, bytes([0]*7 + [memory_id])), EltakoMessage))
                 assert response.org == 0xf1
                 assert response.address == memory_id
                 sender = response.payload[:4]
                 if response.payload[5] == 32:
                     dimming = random.randint(0, 100)
                     print("I'e found a programmed universal dimmer state input, sending value %d"%dimming)
-                    print(await(e(ESP2Message(b"\x0b\x07\x02" + bytes([dimming]) + b"\0\x09" + sender + b"\0"))))
+                    print(await(bus.exchange(ESP2Message(b"\x0b\x07\x02" + bytes([dimming]) + b"\0\x09" + sender + b"\0"))))
 
     class FSR14(BusObject):
         size = 1
@@ -412,11 +422,11 @@ async def show_off(context, address, search_term=""):
             hour = random.randint(0, 23)
             minutes = random.randint(0, 59)
             print("Setting clock to %02d:%02d"%(hour, minutes))
-            select_response = await e(EltakoMessage(0xf2, self.address))
+            select_response = await bus.exchange(EltakoMessage(0xf2, self.address))
             if select_response.org != 0xf2:
                 print("Selecting the clock went wrong (got %r)"%select_response)
             else:
-                write_response = await e(EltakoMessage(0xf4, 0x5d, b"\x16\x01\x01\x08" + bytes((((hour // 10) << 4) + (hour % 10), ((minutes // 10) << 4) + (minutes % 10))) + b"\x00\x01"))
+                write_response = await bus.exchange(EltakoMessage(0xf4, 0x5d, b"\x16\x01\x01\x08" + bytes((((hour // 10) << 4) + (hour % 10), ((minutes // 10) << 4) + (minutes % 10))) + b"\x00\x01"))
                 if write_response.org != 0xf4:
                     print("Writing went wrong (got %r)"%write_response)
 
@@ -445,7 +455,7 @@ async def show_off(context, address, search_term=""):
         search_term = ""
     for i in scan: # FIXME this is just for faster testing
         try:
-            response = await e(EltakoMessage(org=0xf0, address=i), EltakoDiscoveryReply)
+            response = await bus.exchange(EltakoMessage(org=0xf0, address=i), EltakoDiscoveryReply)
         except TimeoutError:
             continue
         else:
@@ -464,7 +474,7 @@ async def show_off(context, address, search_term=""):
 
     if not devices:
         print("No matching devices found.")
-        print(await e(EltakoMessage(0xff, 0x00)))
+        print(await bus.exchange(EltakoMessage(0xff, 0x00)))
         return
 
     print("Now let's see what the devices can do:")
@@ -478,7 +488,7 @@ async def show_off(context, address, search_term=""):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--rawuri", help="URI at which a raw ESP2 resource is exposed")
-    p.add_argument("--cachefile", help="File to cache responses at (currently only sparsely used)")
+    p.add_argument("--cachefile", help="File to cache responses at")
     subp = p.add_subparsers(metavar="command", dest="command")
 
     p_enumerate = subp.add_parser("enumerate", help="Explore the bus")
@@ -504,16 +514,21 @@ def main():
 
     loop = asyncio.get_event_loop()
     context = loop.run_until_complete(aiocoap.Context.create_client_context())
+
+    bus = CoAPInterface(context, opts.rawuri)
+    if opts.cachefile:
+        bus = PickledBusCache(bus, opts.cachefile)
+
     if opts.command == "enumerate":
-        loop.run_until_complete(enumerate(context, opts.rawuri))
+        loop.run_until_complete(enumerate(bus))
     elif opts.command == "fakefam":
-        loop.run_until_complete(fakefam(context, opts.rawuri, opts.device, opts.cachefile))
+        loop.run_until_complete(fakefam(bus, opts.device))
     elif opts.command == "send_raw":
-        loop.run_until_complete(send_raw(context, opts.rawuri, opts.data))
+        loop.run_until_complete(send_raw(bus, opts.data))
     elif opts.command == "unlock_bus":
-        loop.run_until_complete(unlock_bus(context, opts.rawuri))
+        loop.run_until_complete(unlock_bus(bus))
     elif opts.command == "show_off":
-        loop.run_until_complete(show_off(context, opts.rawuri, opts.searchterm))
+        loop.run_until_complete(show_off(bus, opts.searchterm))
     else:
         raise RuntimeError("Additional command declared but not implemented.")
 
