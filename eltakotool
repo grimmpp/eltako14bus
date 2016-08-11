@@ -4,8 +4,12 @@ import argparse
 import asyncio
 import functools
 import os
+import os.path
 import random
 import time
+import sys
+import pickle
+from typing import *
 
 import aiocoap
 import serial
@@ -39,6 +43,61 @@ async def exchange(context, address, request, responsetype=None):
         else:
             raise TimeoutError
         raise
+
+class BusCache:
+    """Basic store of attributes on the bus that are not expected to change.
+
+    This class takes care of the actual caching logic, but relies on subclasss
+    to provide storage."""
+
+    async def exchange(self, context, address, request, responsetype=None):
+        pretty = prettify(request)
+        key = None
+        if isinstance(pretty, EltakoFAMQuery):
+            key = 'famquery'
+        elif isinstance(pretty, EltakoDiscoveryRequest):
+            key = ('discover', pretty.address)
+        elif pretty.org == 0xf1:
+            key = ('read', pretty.address, pretty.payload)
+
+        if key is None:
+            return await exchange(context, address, request, responsetype)
+
+        if key not in self:
+            try:
+                self[key] = (await exchange(context, address, request)).serialize()
+            except TimeoutError:
+                self[key] = EltakoTimeout().serialize()
+
+        if responsetype is None:
+            return prettify(ESP2Message.parse(self[key]))
+        try:
+            return responsetype.parse(self[key])
+        except ParseError:
+            try:
+                EltakoTimeout.parse(self[key])
+            except ParseError:
+                pass
+            else:
+                raise TimeoutError
+            raise
+
+class RAMBusCache(dict, BusCache):
+    pass
+
+class PickledBusCache(RAMBusCache):
+    def __init__(self, filename):
+        self._filename = filename
+        if os.path.exists(filename):
+            self.update(pickle.load(open(self._filename, 'rb')))
+
+    def __setitem__(self, k, v):
+        super(PickledBusCache, self).__setitem__(k, v)
+
+        tmpname = self._filename + '.tmp'
+        with open(tmpname, 'wb') as f:
+            pickle.dump(dict(self), f)
+        os.rename(tmpname, self._filename)
 
 def prettify(message):
     try: return EltakoFAMQuery.parse(message.serialize())
@@ -218,11 +277,33 @@ async def enumerate(context, address):
             assert response.reported_address == i, "Assigning bus number %d resulted in response %r"%(i, response)
             print("The device was assigned bus address %d. You may now put a further device into LRN mode."%i)
 
-async def fakefam(context, address, serverdevice):
+async def preread(e):
+    """Given a partial'd exchange function, read once through all addresses and all their memory content"""
+    for i in range(255):
+        try:
+            r = await e(EltakoDiscoveryRequest(address=i), EltakoDiscoveryReply)
+        except TimeoutError:
+            continue
+
+        print("Scanning memory of %d"%i)
+        for j in range(255):
+            print(".", end="")
+            sys.stdout.flush()
+            await e(EltakoMessage(0xf1, i, bytes([0] * 7 + [j])))
+        print("", file=sys.stderr)
+
+async def fakefam(context, address, serverdevice, cachefile: Optional[str]):
     s = serial.Serial(serverdevice, baudrate=57600)
     loop = asyncio.get_event_loop()
     q = asyncio.Queue(loop=loop)
     loop.add_reader(s.fileno(), lambda: q.put_nowait(os.read(s.fileno(), 1024)))
+
+    if cachefile is None:
+        e = functools.Partial(exchange, context, address)
+    else:
+        e = functools.partial(PickledBusCache(cachefile).exchange, context, address)
+
+    await preread(e)
 
     buffered = b""
 
@@ -397,6 +478,7 @@ async def show_off(context, address, search_term=""):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--rawuri", help="URI at which a raw ESP2 resource is exposed")
+    p.add_argument("--cachefile", help="File to cache responses at (currently only sparsely used)")
     subp = p.add_subparsers(metavar="command", dest="command")
 
     p_enumerate = subp.add_parser("enumerate", help="Explore the bus")
@@ -425,7 +507,7 @@ def main():
     if opts.command == "enumerate":
         loop.run_until_complete(enumerate(context, opts.rawuri))
     elif opts.command == "fakefam":
-        loop.run_until_complete(fakefam(context, opts.rawuri, opts.device))
+        loop.run_until_complete(fakefam(context, opts.rawuri, opts.device, opts.cachefile))
     elif opts.command == "send_raw":
         loop.run_until_complete(send_raw(context, opts.rawuri, opts.data))
     elif opts.command == "unlock_bus":
