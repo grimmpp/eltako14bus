@@ -11,9 +11,10 @@ import sys
 import pickle
 from typing import *
 import abc
+import socket
 
 import aiocoap
-import serial
+import serial.aio
 
 def b2a(rawdata):
     # like binascii.b2a_hex, but directly to unicode for printing, and with nice spacing
@@ -309,18 +310,16 @@ async def preread(bus):
             await bus.exchange(EltakoMessage(0xf1, i, bytes([0] * 7 + [j])))
         print("", file=sys.stderr)
 
-async def fakefam(bus, serverdevice):
-    s = serial.Serial(serverdevice, baudrate=57600)
-    loop = asyncio.get_event_loop()
-    q = asyncio.Queue(loop=loop)
-    loop.add_reader(s.fileno(), lambda: q.put_nowait(os.read(s.fileno(), 1024)))
-
-    await preread(bus)
-
+async def run_fakefam(bus, reader, writer, conn_made: Optional[asyncio.Future]=None, conn_end: Optional[asyncio.Future]=None):
+    if conn_made:
+        conn_made.set_result(None)
     buffered = b""
 
     while True:
-        buffered += await q.get()
+        try:
+            buffered += await reader.readexactly(14 - len(buffered))
+        except asyncio.streams.IncompleteReadError:
+            break
         while len(buffered) >= 14:
             try:
                 parsed = ESP2Message.parse(buffered[:14])
@@ -333,7 +332,41 @@ async def fakefam(bus, serverdevice):
                 response = await bus.exchange(parsed, ESP2Message)
                 end = time.time()
                 print(prettify(parsed), "(%.3fs)"%(end - start), prettify(response))
-                s.write(response.serialize())
+                writer.write(response.serialize())
+
+    if conn_end:
+        conn_end.set_result(None)
+
+async def fakefam(bus, serverdevice):
+    await preread(bus)
+
+    loop = asyncio.get_event_loop()
+
+    try:
+        # reader, writer = await serial.aio.open_serial_connection(serverdevice, baudrate=57600, loop=loop)
+        # the above should work as well -- this is a workaround for not-sure-what
+        reader = asyncio.StreamReader()
+        protocol = asyncio.StreamReaderProtocol(reader)
+        transport, _ = await serial.aio.create_serial_connection(loop, lambda: protocol, serverdevice, baudrate=57600)
+        writer = asyncio.StreamWriter(transport, protocol, reader, loop)
+        await run_fakefam(bus, reader, writer)
+    except serial.serialutil.SerialException:
+        pass
+    else:
+        def read():
+            return os.read(s.fileno(), 1024)
+        write = s.write
+
+        q = asyncio.Queue(loop=loop)
+        loop.add_reader(s.fileno(), lambda: q.put_nowait(read()))
+        return
+
+    conn_made = asyncio.Future()
+    conn_end = asyncio.Future()
+    await asyncio.start_unix_server(functools.partial(run_fakefam, bus, conn_made=conn_made, conn_end=conn_end), serverdevice, loop=loop)
+    await conn_made
+    os.unlink(serverdevice)
+    await conn_end
 
 async def send_raw(bus, data):
     print(prettify(await bus.exchange(ESP2Message(bytes(data)), ESP2Message)))
