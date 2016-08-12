@@ -92,6 +92,19 @@ class CoAPInterface(BusInterface):
 
         return tuple(full[i*row_length:(i+1)*row_length] for i in range(row_number))
 
+class ReadaheadMixin:
+    """While this technically inherits from BusInterface alone, it is only
+    practical in connection with a BusCache because otherwise the obtained data
+    is immediately lost again"""
+
+    async def base_exchange(self, request):
+        pretty = prettify(request)
+        if isinstance(pretty, EltakoMemoryRequest):
+            full = await self.read_mem(pretty.address)
+            return EltakoMessage(0xf1, pretty.row, full[pretty.row], is_request=False).serialize()
+
+        return await super(ReadaheadMixin, self).base_exchange(request)
+
 class BusCache(BusInterface):
     """Basic store of attributes on the bus that are not expected to change.
 
@@ -122,6 +135,12 @@ class BusCache(BusInterface):
 
         return self[key]
 
+    async def read_mem(self, address):
+        key = ('memory', address)
+        if key not in self:
+            self[key] = await self.parent.read_mem(address)
+        return self[key]
+
 class RAMBusCache(dict, BusCache):
     pass
 
@@ -140,6 +159,9 @@ class PickledBusCache(RAMBusCache):
         with open(tmpname, 'wb') as f:
             pickle.dump(dict(self), f)
         os.rename(tmpname, self._filename)
+
+class ReadaheadPickledBusCache(ReadaheadMixin, PickledBusCache):
+    pass
 
 def prettify(message):
     classes = [EltakoFAMQuery, EltakoDiscoveryRequest, EltakoDiscoveryReply,
@@ -344,6 +366,7 @@ async def preread(bus):
 
         print("Scanning memory of %d"%i)
         await bus.read_mem(i)
+    print("done prereading")
 
 async def run_fakefam(bus, reader, writer, conn_made: Optional[asyncio.Future]=None, conn_end: Optional[asyncio.Future]=None):
     if conn_made:
@@ -593,7 +616,7 @@ def main():
 
     bus = CoAPInterface(context, opts.rawuri)
     if opts.cachefile:
-        bus = PickledBusCache(bus, opts.cachefile)
+        bus = ReadaheadPickledBusCache(bus, opts.cachefile)
 
     if opts.command == "enumerate":
         loop.run_until_complete(enumerate(bus))
