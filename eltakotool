@@ -56,6 +56,17 @@ class BusInterface(metaclass=abc.ABCMeta):
         NotImplementedError, and users should fall back to
         exchange().serialize(), or maybe this should provide that here."""
 
+    async def read_mem(self, address) -> Tuple[bytes]:
+        """Return the complete memory content of the bus participant with the
+        given address, as queried with F1 messages."""
+
+        # FIXME more stringent error handling / message type filtering
+        data = []
+        for j in range(256):
+            response = await self.exchange(EltakoMessage(0xf1, address, bytes([0] * 7 + [j])), EltakoMessage)
+            data.append(response.payload)
+        return tuple(data)
+
 class CoAPInterface(BusInterface):
     def __init__(self, context, address):
         self.context = context
@@ -67,6 +78,19 @@ class CoAPInterface(BusInterface):
         coap_response = await self.context.request(coap_request).response
 
         return coap_response.payload
+
+    async def read_mem(self, address):
+        # FIXME this is not how URIs work
+        coap_request = aiocoap.Message(code=aiocoap.GET, uri=self.address.replace('raw', 'memory') + '?addr=%d'%address)
+        coap_response = await self.context.request(coap_request).response
+
+        full = coap_response.payload
+
+        row_length = 8
+        row_number = 256
+        assert len(full) == row_length * row_number
+
+        return tuple(full[i*row_length:(i+1)*row_length] for i in range(row_number))
 
 class BusCache(BusInterface):
     """Basic store of attributes on the bus that are not expected to change.
@@ -304,11 +328,7 @@ async def preread(bus):
             continue
 
         print("Scanning memory of %d"%i)
-        for j in range(255):
-            print(".", end="")
-            sys.stdout.flush()
-            await bus.exchange(EltakoMessage(0xf1, i, bytes([0] * 7 + [j])))
-        print("", file=sys.stderr)
+        await bus.read_mem(i)
 
 async def run_fakefam(bus, reader, writer, conn_made: Optional[asyncio.Future]=None, conn_end: Optional[asyncio.Future]=None):
     if conn_made:
