@@ -101,7 +101,7 @@ class BusCache(BusInterface):
     def __init__(self, parent):
         self.parent = parent
 
-    async def base_exchange(self, request, responsetype=None):
+    async def base_exchange(self, request):
         pretty = prettify(request)
         key = None
         if isinstance(pretty, EltakoFAMQuery):
