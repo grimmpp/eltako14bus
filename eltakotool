@@ -4,7 +4,6 @@ import argparse
 import asyncio
 import functools
 import os
-import os.path
 import random
 import time
 import sys
@@ -12,9 +11,11 @@ import pickle
 from typing import *
 import abc
 import socket
+from pathlib import Path
 
 import aiocoap
 import serial.aio
+import xdg.BaseDirectory
 
 def b2a(rawdata):
     # like binascii.b2a_hex, but directly to unicode for printing, and with nice spacing
@@ -149,16 +150,16 @@ class PickledBusCache(RAMBusCache):
         BusCache.__init__(self, parent)
 
         self._filename = filename
-        if os.path.exists(filename):
-            self.update(pickle.load(open(self._filename, 'rb')))
+        if filename.exists():
+            self.update(pickle.load(self._filename.open('rb')))
 
     def __setitem__(self, k, v):
         super(PickledBusCache, self).__setitem__(k, v)
 
-        tmpname = self._filename + '.tmp'
-        with open(tmpname, 'wb') as f:
+        tmpname = self._filename.with_suffix(".tmp")
+        with tmpname.open('wb') as f:
             pickle.dump(dict(self), f)
-        os.rename(tmpname, self._filename)
+        tmpname.rename(self._filename)
 
 class ReadaheadPickledBusCache(ReadaheadMixin, PickledBusCache):
     pass
@@ -586,7 +587,8 @@ async def show_off(bus, search_term=""):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--rawuri", help="URI at which a raw ESP2 resource is exposed")
-    p.add_argument("--cachefile", help="File to cache responses at")
+    p.add_argument("--cache", help="Store cachable responses locally", action='store_true')
+    p.add_argument("--cachefile", help="File to cache responses at", type=Path)
     p.add_argument("--preread", help="Enumerate bus and read devices' memory before executing the command", action='store_true')
     subp = p.add_subparsers(metavar="command", dest="command")
 
@@ -615,11 +617,12 @@ def main():
     context = loop.run_until_complete(aiocoap.Context.create_client_context())
 
     bus = CoAPInterface(context, opts.rawuri)
-    if opts.cachefile:
-        bus = ReadaheadPickledBusCache(bus, opts.cachefile)
+    if opts.cache:
+        cachefile = opts.cachefile or Path(xdg.BaseDirectory.save_cache_path("eltakotool")) / opts.rawuri.replace('/', '-')
+        bus = ReadaheadPickledBusCache(bus, cachefile)
 
     if opts.preread:
-        if not opts.cachefile:
+        if not opts.cache:
             print("Warning: Without caching, prereading is not much good.")
         print("Prereading bus...")
         loop.run_until_complete(preread(bus))
