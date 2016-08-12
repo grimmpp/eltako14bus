@@ -230,7 +230,7 @@ class EltakoStaticMessage(EltakoMessage):
         eltakomessage = super().parse(data)
         if eltakomessage.org != cls.org or eltakomessage.is_request != cls.is_request or \
                 eltakomessage.payload != cls.payload or eltakomessage.address != cls.address:
-            raise ParseError("This is not an EltakoFAMQuery")
+            raise ParseError("This is not an %s"%(type(self),))
         return cls()
 
     def __repr__(self):
