@@ -63,7 +63,7 @@ class BusInterface(metaclass=abc.ABCMeta):
         # FIXME more stringent error handling / message type filtering
         data = []
         for j in range(256):
-            response = await self.exchange(EltakoMessage(0xf1, address, bytes([0] * 7 + [j])), EltakoMessage)
+            response = await self.exchange(EltakoMemoryRequest(address, j), EltakoMessage)
             data.append(response.payload)
         return tuple(data)
 
@@ -108,11 +108,11 @@ class BusCache(BusInterface):
             key = 'famquery'
         elif isinstance(pretty, EltakoDiscoveryRequest):
             key = ('discover', pretty.address)
-        elif pretty.org == 0xf1:
-            key = ('read', pretty.address, pretty.payload)
+        elif isinstance(pretty, EltakoMemoryRequest):
+            key = ('read', pretty.address, pretty.row)
 
         if key is None: # uncachable
-            return await self.parent.base_exchange(request, responsetype)
+            return await self.parent.base_exchange(request)
 
         if key not in self:
             try:
@@ -142,20 +142,12 @@ class PickledBusCache(RAMBusCache):
         os.rename(tmpname, self._filename)
 
 def prettify(message):
-    try: return EltakoFAMQuery.parse(message.serialize())
-    except ParseError: pass
+    classes = [EltakoFAMQuery, EltakoDiscoveryRequest, EltakoDiscoveryReply,
+            EltakoMemoryRequest, EltakoTimeout, EltakoMessage]
 
-    try: return EltakoDiscoveryRequest.parse(message.serialize())
-    except ParseError: pass
-
-    try: return EltakoDiscoveryReply.parse(message.serialize())
-    except ParseError: pass
-
-    try: return EltakoTimeout.parse(message.serialize())
-    except ParseError: pass
-
-    try: return EltakoMessage.parse(message.serialize())
-    except ParseError: pass
+    for c in classes:
+        try: return c.parse(message.serialize())
+        except ParseError: pass
 
     return message
 
@@ -271,6 +263,29 @@ class EltakoDiscoveryReply(EltakoMessage):
 
     def __repr__(self):
         return "<%s address %d size %d, model %s>"%(type(self).__name__, self.reported_address, self.reported_size, b2a(self.model))
+
+class EltakoMemoryRequest(EltakoMessage):
+    org = 0xf1
+    is_request = True
+
+    @property
+    def payload(self):
+        return bytes([0] * 7 + [self.row])
+
+    def __init__(self, address, row):
+        self.address = address
+        self.row = row
+
+    @classmethod
+    def parse(cls, data):
+        eltakomessage = super().parse(data)
+        if eltakomessage.org != cls.org or eltakomessage.is_request != cls.is_request or \
+                any(eltakomessage.payload[:7]):
+            raise ParseError("This is not an EltakoMemoryRequest")
+        return cls(eltakomessage.address, eltakomessage.payload[7])
+
+    def __repr__(self):
+        return "<%s address %d row %d>"%(type(self).__name__, self.address, self.row)
 
 class EltakoTimeout(EltakoStaticMessage):
     org = 0xf8
@@ -454,7 +469,7 @@ async def show_off(bus, search_term=""):
 
             print("Reading out input programming")
             for memory_id in range(12, 128):
-                response = await(bus.exchange(EltakoMessage(0xf1, self.address, bytes([0]*7 + [memory_id])), EltakoMessage))
+                response = await(bus.exchange(EltakoMemoryRequest(self.address, memory_id), EltakoMessage))
                 assert response.org == 0xf1
                 assert response.address == memory_id
                 sender = response.payload[:4]
