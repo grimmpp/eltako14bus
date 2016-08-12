@@ -366,7 +366,8 @@ async def preread(bus):
 
         print("Scanning memory of %d"%i)
         await bus.read_mem(i)
-    print("done prereading")
+    print("Scanning memory of 255")
+    await bus.read_mem(255)
 
 async def run_fakefam(bus, reader, writer, conn_made: Optional[asyncio.Future]=None, conn_end: Optional[asyncio.Future]=None):
     if conn_made:
@@ -399,8 +400,6 @@ async def fakefam(bus, serverdevice):
     # serverdevice will be tested to be a character device, and otherwise
     # opened as a unix or tcp socket depending on whether it contains slashes
     # or colons.
-    await preread(bus)
-
     loop = asyncio.get_event_loop()
 
     try:
@@ -588,6 +587,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--rawuri", help="URI at which a raw ESP2 resource is exposed")
     p.add_argument("--cachefile", help="File to cache responses at")
+    p.add_argument("--preread", help="Enumerate bus and read devices' memory before executing the command", action='store_true')
     subp = p.add_subparsers(metavar="command", dest="command")
 
     p_enumerate = subp.add_parser("enumerate", help="Explore the bus")
@@ -617,6 +617,13 @@ def main():
     bus = CoAPInterface(context, opts.rawuri)
     if opts.cachefile:
         bus = ReadaheadPickledBusCache(bus, opts.cachefile)
+
+    if opts.preread:
+        if not opts.cachefile:
+            print("Warning: Without caching, prereading is not much good.")
+        print("Prereading bus...")
+        loop.run_until_complete(preread(bus))
+        print("done.")
 
     if opts.command == "enumerate":
         loop.run_until_complete(enumerate(bus))
