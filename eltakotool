@@ -338,6 +338,9 @@ async def run_fakefam(bus, reader, writer, conn_made: Optional[asyncio.Future]=N
         conn_end.set_result(None)
 
 async def fakefam(bus, serverdevice):
+    # serverdevice will be tested to be a character device, and otherwise
+    # opened as a unix or tcp socket depending on whether it contains slashes
+    # or colons.
     await preread(bus)
 
     loop = asyncio.get_event_loop()
@@ -361,11 +364,16 @@ async def fakefam(bus, serverdevice):
         loop.add_reader(s.fileno(), lambda: q.put_nowait(read()))
         return
 
-    conn_made = asyncio.Future()
     conn_end = asyncio.Future()
-    await asyncio.start_unix_server(functools.partial(run_fakefam, bus, conn_made=conn_made, conn_end=conn_end), serverdevice, loop=loop)
-    await conn_made
-    os.unlink(serverdevice)
+    if '/' in serverdevice or not ':' in serverdevice:
+        conn_made = asyncio.Future()
+        await asyncio.start_unix_server(functools.partial(run_fakefam, bus, conn_made=conn_made, conn_end=conn_end), serverdevice, loop=loop)
+        await conn_made
+        os.unlink(serverdevice)
+    else:
+        # note that this could run several connections at the same time, which is both great and terrifying
+        host, port = serverdevice.split(':', 1)
+        await asyncio.start_server(functools.partial(run_fakefam, bus, conn_end=conn_end), host, int(port), loop=loop)
     await conn_end
 
 async def send_raw(bus, data):
