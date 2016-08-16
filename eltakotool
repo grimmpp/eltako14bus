@@ -321,7 +321,7 @@ async def enumerate(bus):
     usage_map = [None]
     while len(usage_map) < 255:
         try:
-            response = await bus.exchange(EltakoMessage(org=0xf0, address=len(usage_map)), EltakoDiscoveryReply)
+            response = await bus.exchange(EltakoDiscoveryRequest(address=len(usage_map)), EltakoDiscoveryReply)
         except TimeoutError:
             usage_map.append(False)
         else:
@@ -336,7 +336,7 @@ async def enumerate(bus):
     reported = False
     while True:
         try:
-            response = await bus.exchange(EltakoMessage(org=0xf0, address=0), EltakoDiscoveryReply)
+            response = await bus.exchange(EltakoDiscoveryRequest(address=0), EltakoDiscoveryReply)
         except TimeoutError:
             if reported is False:
                 print("You may now put a device into LRN mode to automatically assign an address.")
