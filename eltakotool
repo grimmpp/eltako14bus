@@ -110,17 +110,43 @@ class BusCache(BusInterface):
     """Basic store of attributes on the bus that are not expected to change.
 
     This class takes care of the actual caching logic, but relies on subclasss
-    to provide storage."""
+    to provide storage.
+
+    The whole locking area is handled as follows: As long as the bus is not
+    locked (and it is assumed that the bus is not locked initially), no cached
+    data is served, and no responses are cached, due to the assumption that bus
+    communication is too erratic then. Only when a successful bus lock is
+    obtained, caching is started, and cache responses are handed out.
+    Subsequent lock (and even unlock) commands are not sent to the bus, but
+    served from memory (as the response to an unlock was always observed to be
+    the same as to a lock)."""
 
     def __init__(self, parent):
         self.parent = parent
 
+        self.is_locked = False
+
     async def base_exchange(self, request):
         pretty = prettify(request)
+
+        if not self.is_locked:
+            response = await self.parent.base_exchange(request)
+
+            try:
+                pretty_response = EltakoDiscoveryReply.parse(response)
+            except ParseError:
+                pass
+            else:
+                if isinstance(pretty, EltakoBusLock) and isinstance(pretty_response, EltakoDiscoveryReply) and pretty_response.address == 0:
+                    self.is_locked = True
+                    self['fam_reply'] = response
+
+            return response
+
         key = None
-        if isinstance(pretty, EltakoBusLock):
-            key = 'famquery'
-        elif isinstance(pretty, EltakoDiscoveryRequest):
+        if isinstance(pretty, EltakoBusLock) or isinstance(pretty, EltakoBusUnlock):
+            return self['fam_reply']
+        if isinstance(pretty, EltakoDiscoveryRequest):
             key = ('discover', pretty.address)
         elif isinstance(pretty, EltakoMemoryRequest):
             key = ('read', pretty.address, pretty.row)
@@ -165,7 +191,7 @@ class ReadaheadPickledBusCache(ReadaheadMixin, PickledBusCache):
     pass
 
 def prettify(message):
-    classes = [EltakoBusLock, EltakoDiscoveryRequest, EltakoDiscoveryReply,
+    classes = [EltakoBusLock, EltakoBusUnlock, EltakoDiscoveryRequest, EltakoDiscoveryReply,
             EltakoMemoryRequest, EltakoTimeout, EltakoMessage]
 
     for c in classes:
@@ -241,6 +267,12 @@ class EltakoBusLock(EltakoStaticMessage):
     org = 0xff
     is_request = True
     address = 0xff
+    payload = b"\0\0\0\0\0\0\0\0"
+
+class EltakoBusUnlock(EltakoStaticMessage):
+    org = 0xff
+    is_request = True
+    address = 0x00
     payload = b"\0\0\0\0\0\0\0\0"
 
 class EltakoDiscoveryRequest(EltakoMessage):
@@ -319,7 +351,7 @@ class EltakoTimeout(EltakoStaticMessage):
 async def enumerate(bus):
     print("Scanning the bus for devices with addresses...")
     usage_map = [None]
-    while len(usage_map) < 255:
+    while len(usage_map) < 256:
         try:
             response = await bus.exchange(EltakoDiscoveryRequest(address=len(usage_map)), EltakoDiscoveryReply)
         except TimeoutError:
@@ -359,7 +391,10 @@ async def enumerate(bus):
 
 async def preread(bus):
     """Given a partial'd exchange function, read once through all addresses and all their memory content"""
-    for i in range(255):
+
+    print("Locking bus for prereading")
+    await lock_bus(bus)
+    for i in range(256):
         try:
             r = await bus.exchange(EltakoDiscoveryRequest(address=i), EltakoDiscoveryReply)
         except TimeoutError:
@@ -367,8 +402,8 @@ async def preread(bus):
 
         print("Scanning memory of %d"%i)
         await bus.read_mem(i)
-    print("Scanning memory of 255")
-    await bus.read_mem(255)
+    print("Unlocking bus after prereading")
+    await unlock_bus(bus)
 
 async def run_fakefam(bus, reader, writer, conn_made: Optional[asyncio.Future]=None, conn_end: Optional[asyncio.Future]=None):
     if conn_made:
@@ -453,7 +488,7 @@ async def lock_bus(bus):
 async def unlock_bus(bus):
     # probably we don't need to repeat that at all
     for i in range(5):
-        response = await bus.exchange(EltakoMessage(0xff, 0x00), EltakoMessage)
+        response = await bus.exchange(EltakoBusUnlock(), EltakoMessage)
         if response.org == 0xf0:
             print("FAM acknowledged return to regular operation (%s)"%response)
             return
