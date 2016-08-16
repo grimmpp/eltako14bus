@@ -600,6 +600,9 @@ def main():
     base16 = functools.partial(int, base=16)
     p_send4bs.add_argument("data", type=base16, nargs=11)
 
+    p_eval = subp.add_parser("eval", help="Display the response to a single message object passed as a Python expression")
+    p_eval.add_argument("expr")
+
     subp.add_parser("unlock_bus", help="Release the FAM to normal operation")
 
     p_showoff = subp.add_parser("show_off", help="Run a demo of what is currently known of the bus")
@@ -634,6 +637,8 @@ def main():
         loop.run_until_complete(fakefam(bus, opts.device))
     elif opts.command == "send_raw":
         loop.run_until_complete(send_raw(bus, opts.data))
+    elif opts.command == "eval":
+        print(loop.run_until_complete(bus.exchange(eval(opts.expr))))
     elif opts.command == "unlock_bus":
         loop.run_until_complete(unlock_bus(bus))
     elif opts.command == "show_off":
