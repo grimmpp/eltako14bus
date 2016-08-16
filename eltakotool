@@ -437,7 +437,21 @@ async def fakefam(bus, serverdevice):
 async def send_raw(bus, data):
     print(prettify(await bus.exchange(ESP2Message(bytes(data)), ESP2Message)))
 
+async def lock_bus(bus):
+    for i in range(10):
+        try:
+            response = await bus.exchange(EltakoFAMQuery(), EltakoMessage)
+        except TimeoutError:
+            continue
+        if response.org == 0xf0:
+            print("FAM acknowledged lock after %d try(s)."%(i+1))
+            return
+        else:
+            print("Unexpected message: %s"%response)
+    print("Sent some requests, but no acknowledgement from FAM")
+
 async def unlock_bus(bus):
+    # probably we don't need to repeat that at all
     for i in range(5):
         response = await bus.exchange(EltakoMessage(0xff, 0x00), EltakoMessage)
         if response.org == 0xf0:
@@ -603,6 +617,7 @@ def main():
     p_eval = subp.add_parser("eval", help="Display the response to a single message object passed as a Python expression")
     p_eval.add_argument("expr")
 
+    subp.add_parser("lock_bus", help="Lock the bus")
     subp.add_parser("unlock_bus", help="Release the FAM to normal operation")
 
     p_showoff = subp.add_parser("show_off", help="Run a demo of what is currently known of the bus")
@@ -639,6 +654,8 @@ def main():
         loop.run_until_complete(send_raw(bus, opts.data))
     elif opts.command == "eval":
         print(loop.run_until_complete(bus.exchange(eval(opts.expr))))
+    elif opts.command == "lock_bus":
+        loop.run_until_complete(lock_bus(bus))
     elif opts.command == "unlock_bus":
         loop.run_until_complete(unlock_bus(bus))
     elif opts.command == "show_off":
