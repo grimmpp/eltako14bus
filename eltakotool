@@ -106,6 +106,49 @@ class ReadaheadMixin:
 
         return await super(ReadaheadMixin, self).base_exchange(request)
 
+# this approach won't work exactly like that, because memory can both be
+# written in full or line-wise from PCT; furthermore, there are too many
+# timeouts around yet, so there is probably something else fishy.
+#
+# a better approach would spool all writes and flush them timeout-based, or
+# before the next incompatible write comes along.
+#
+#class WriteDelayer(BusInterface):
+#    def __init__(self, *args, **kwargs):
+#        super(WriteDelayer, self).__init__(*args, **kwargs)
+#        self.spool = []
+#
+#    async def base_exchange(self, request):
+#        pretty = prettify(request)
+#        if pretty.org == 0xf2 or pretty.org == 0xf4:
+#            print("postponing write operation %s"%request)
+#            if pretty.org == 0xf4 and pretty.address == 0x7f:
+#                print("Flushing out the write operations now")
+#                retries = 3
+#                while self.spool:
+#                    await asyncio.sleep(0.5)
+#                    next_request = self.spool[0]
+#                    response = prettify(ESP2Message.parse(await super(WriteDelayer, self).base_exchange(next_request)))
+#                    print("%s - %s"%(prettify(next_request), response))
+#                    if isinstance(response, EltakoTimeout):
+#                        if retries:
+#                            retries -= 1
+#                            continue
+#                        else:
+#                            raise Exception("Too many timeouts in write sequence")
+#                    else:
+#                        self.spool.pop(0)
+#                        retries = 3
+#                response = await super(WriteDelayer, self).base_exchange(request)
+#                print("Flushing complete; you can probably ignore the error the flashing software gave you")
+#                return response
+#            else:
+#                self.spool.append(request)
+#
+#            return EltakoMessage(pretty.org, pretty.address, pretty.payload, not pretty.is_request).serialize()
+#        else:
+#            return await super(WriteDelayer, self).base_exchange(request)
+
 class BusCache(BusInterface):
     """Basic store of attributes on the bus that are not expected to change.
 
