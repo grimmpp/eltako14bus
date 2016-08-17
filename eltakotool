@@ -143,6 +143,12 @@ class BusCache(BusInterface):
 
             return response
 
+        if pretty.org == 0xf2:
+            # writing prepared -- we better wipe the cache for that
+            self.pop(('memory', pretty.address), None)
+            for i in range(256):
+                self.pop(('read', pretty.address, i), None)
+
         key = None
         if isinstance(pretty, EltakoBusLock) or isinstance(pretty, EltakoBusUnlock):
             return self['fam_reply']
