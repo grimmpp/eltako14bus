@@ -555,7 +555,7 @@ async def show_off(bus, search_term=""):
             self.discovery_response = response
             if self.discovery_response.reported_size != self.size:
                 # won't happen with the default size implementation, but another class may give a constant here
-                raise ValueError("Unexpected size")
+                raise ValueError("Unexpected size (got %d, expected %d for %r)"%(self.discovery_response.reported_size, self.size, self))
         @property
         def version(self):
             high, low = self.discovery_response.model[2:4]
