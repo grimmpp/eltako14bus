@@ -570,6 +570,7 @@ async def show_off(bus, search_term=""):
             await asyncio.sleep(3)
     class FUD14(BusObject):
         size = 1
+        discovery_name = bytes((0x04, 0x04))
         async def show_off(self):
             await super().show_off()
 
@@ -600,18 +601,25 @@ async def show_off(bus, search_term=""):
                     print(await(bus.exchange(ESP2Message(b"\x0b\x07\x02" + bytes([dimming]) + b"\0\x09" + sender + b"\0"))))
 
     class FSR14(BusObject):
+        discovery_name = bytes((0x04, 0x01))
         size = 1
     class FSR14_2x(BusObject):
+        discovery_name = bytes((0x04, 0x02))
         size = 2
     class F4SR14_LED(BusObject):
+        discovery_name = bytes((0x04, 0x09))
         size = 4
     class F3Z14D(BusObject):
+        discovery_name = bytes((0x04, 0x67))
         size = 3
     class FMZ14(BusObject):
+        discovery_name = bytes((0x04, 0x0e))
         size = 1
     class FWG14MS(BusObject):
+        discovery_name = bytes((0x04, 0x1a))
         size = 1
     class FSU14(BusObject):
+        discovery_name = bytes((0x07, 0x14))
         size = 8
         async def show_off(self):
             await super().show_off()
@@ -629,16 +637,9 @@ async def show_off(bus, search_term=""):
 
             await asyncio.sleep(3)
 
-    classes = {
-            bytes((0x04, 0x04)): FUD14,
-            bytes((0x04, 0x01)): FSR14,
-            bytes((0x04, 0x02)): FSR14_2x,
-            bytes((0x04, 0x09)): F4SR14_LED,
-            bytes((0x04, 0x0e)): FMZ14,
-            bytes((0x04, 0x1a)): FWG14MS,
-            bytes((0x04, 0x67)): F3Z14D,
-            bytes((0x07, 0x14)): FSU14,
-            }
+    known_objects = [FUD14, FSR14, FSR14_2x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14]
+
+    classes = {x.discovery_name: x for x in known_objects}
     devices = []
 
     print("Scanning the bus for devices with addresses...")
