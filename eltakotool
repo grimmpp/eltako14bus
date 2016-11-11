@@ -606,6 +606,9 @@ async def show_off(bus, search_term=""):
     class FSR14_2x(BusObject):
         discovery_name = bytes((0x04, 0x02))
         size = 2
+    class FSR14_4x(BusObject):
+        discovery_name = bytes((0x04, 0x01))
+        size = 4
     class F4SR14_LED(BusObject):
         discovery_name = bytes((0x04, 0x09))
         size = 4
@@ -637,9 +640,10 @@ async def show_off(bus, search_term=""):
 
             await asyncio.sleep(3)
 
-    known_objects = [FUD14, FSR14, FSR14_2x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14]
+    known_objects = [FUD14, FSR14, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14]
 
-    classes = {x.discovery_name: x for x in known_objects}
+    # sorted so the first match of (discovery name is a prefix, size matches) can be used
+    sorted_known_objects = sorted(known_objects, key=lambda o: len(o.discovery_name) + 0.5 * (o.size is not None), reverse=True)
     devices = []
 
     print("Scanning the bus for devices with addresses...")
@@ -658,14 +662,14 @@ async def show_off(bus, search_term=""):
             continue
         else:
             assert i == response.reported_address
-            for prefix, c in sorted(classes.items(), key=lambda p: len(p), reverse=True):
-                if response.model.startswith(prefix):
-                    if not search_term or search_term.lower() in c.__name__.lower():
-                        dev = c(response)
+            for o in sorted_known_objects:
+                if response.model.startswith(o.discovery_name) and (o.size is None or o.size == response.reported_size):
+                    if not search_term or search_term.lower() in o.__name__.lower():
+                        dev = o(response)
                         devices.append(dev)
                         print("Discovered %r"%dev)
                     else:
-                        print("Ignoring discovered %s at %d"%(c.__name__, i))
+                        print("Ignoring discovered %s at %d"%(o.__name__, i))
                     break
             else:
                 print("Ignoring unknown device at %d sized %d, type %s"%(i, response.reported_size, b2a(response.model)))
