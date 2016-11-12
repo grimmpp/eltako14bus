@@ -550,6 +550,7 @@ async def enumerate(bus):
             assert response.reported_address == i, "Assigning bus number %d resulted in response %r"%(i, response)
             print("The device was assigned bus address %d. You may now put a further device into LRN mode."%i)
 
+
 async def preread(bus):
     """Given a partial'd exchange function, read once through all addresses and all their memory content"""
 
@@ -657,10 +658,22 @@ async def unlock_bus(bus):
             print("Unexpected response %r"%response)
     print("Sent some requests, but no acknowledgement from FAM; maybe we're bus master ourselves")
 
+def buslocked(f):
+    """Wraps a coroutine inside a bus locking and (finally) bus unlocking. The
+    coroutine must take a bus as its first argument."""
+    @functools.wraps(f)
+    async def new_f(bus, *args, **kwargs):
+        try:
+            print("Sending a lock command onto the bus; its reply should tell us whether there's a FAM in the game.")
+            await lock_bus(bus)
+            return await f(bus, *args, **kwargs)
+        finally:
+            print("Unlocking the bus again")
+            await unlock_bus(bus)
+    return new_f
+
+@buslocked
 async def show_off(bus, search_term=""):
-    print("Sending a lock command onto the bus; its reply should tell us whether there's a FAM in the game.")
-    # more correct might be doing this until we get a response from a fam, or until we are sure we're the bus master ourselves
-    print(await bus.exchange(EltakoMessage(0xff, 0xff)))
     # sorted so the first match of (discovery name is a prefix, size matches) can be used
     sorted_known_objects = sorted(known_objects, key=lambda o: len(o.discovery_name) + 0.5 * (o.size is not None), reverse=True)
     devices = []
@@ -755,21 +768,37 @@ def main():
         print("done.")
 
     if opts.command == "enumerate":
-        loop.run_until_complete(enumerate(bus))
+        maintask = enumerate(bus)
     elif opts.command == "fakefam":
-        loop.run_until_complete(fakefam(bus, opts.device))
+        maintask = fakefam(bus, opts.device)
     elif opts.command == "send_raw":
-        loop.run_until_complete(send_raw(bus, opts.data))
+        maintask = send_raw(bus, opts.data)
     elif opts.command == "eval":
-        print(loop.run_until_complete(bus.exchange(eval(opts.expr))))
+        maintask = bus.exchange(eval(opts.expr))
     elif opts.command == "lock_bus":
-        loop.run_until_complete(lock_bus(bus))
+        maintask = lock_bus(bus)
     elif opts.command == "unlock_bus":
-        loop.run_until_complete(unlock_bus(bus))
+        maintask = unlock_bus(bus)
     elif opts.command == "show_off":
-        loop.run_until_complete(show_off(bus, opts.searchterm))
+        maintask = show_off(bus, opts.searchterm)
     else:
         raise RuntimeError("Additional command declared but not implemented.")
+
+    maintask = asyncio.Task(maintask)
+
+    try:
+        result = loop.run_until_complete(maintask)
+    except KeyboardInterrupt as e:
+        print("Received keyboard interrupt, cancelling", file=sys.stderr)
+        maintask.cancel()
+        try:
+            loop.run_until_complete(maintask)
+        except asyncio.CancelledError:
+            pass
+        sys.exit(1)
+
+    if result is not None:
+        print(result)
 
 if __name__ == "__main__":
     main()
