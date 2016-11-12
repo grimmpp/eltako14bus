@@ -556,6 +556,8 @@ class FSR14(BusObject):
             db0_for_switching = { # (function, key) to (off, on)
                     (3, 6): (0x70, 0x50), # directional buttons enable on down, right keys
                     (3, 5): (0x30, 0x10), # directional buttons enable on down, left keys
+                    (2, 6): (0x50, 0x70), # directional buttons enable on up, right keys
+                    (2, 5): (0x10, 0x30), # directional buttons enable on up, left keys
                     }
             db0 = db0_for_switching.get((function, key), (None, None))[not want_switch_currentstate]
             if db0 is not None and channels == (1 << want_switch_channel):
