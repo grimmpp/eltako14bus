@@ -103,7 +103,7 @@ class ReadaheadMixin:
         pretty = prettify(request)
         if isinstance(pretty, EltakoMemoryRequest):
             full = await self.read_mem(pretty.address)
-            return EltakoMessage(0xf1, pretty.row, full[pretty.row], is_request=False).serialize()
+            return EltakoMemoryResponse(pretty.row, full[pretty.row]).serialize()
 
         return await super(ReadaheadMixin, self).base_exchange(request)
 
@@ -243,7 +243,7 @@ class ReadaheadPickledBusCache(ReadaheadMixin, PickledBusCache):
 
 def prettify(message):
     classes = [EltakoBusLock, EltakoBusUnlock, EltakoDiscoveryRequest, EltakoDiscoveryReply,
-            EltakoMemoryRequest, EltakoTimeout, EltakoMessage]
+            EltakoMemoryRequest, EltakoMemoryResponse, EltakoTimeout, EltakoMessage]
 
     for c in classes:
         try: return c.parse(message.serialize())
@@ -393,6 +393,32 @@ class EltakoMemoryRequest(EltakoMessage):
     def __repr__(self):
         return "<%s address %d row %d>"%(type(self).__name__, self.address, self.row)
 
+class EltakoMemoryResponse(EltakoMessage):
+    org = 0xf1
+    is_request = False
+
+    @property
+    def payload(self):
+        return self.value
+
+    @property
+    def address(self):
+        return self.row
+
+    def __init__(self, row, value):
+        self.row = row
+        self.value = value
+
+    @classmethod
+    def parse(cls, data):
+        eltakomessage = super().parse(data)
+        if eltakomessage.org != cls.org or eltakomessage.is_request != cls.is_request:
+            raise ParseError("This is not an EltakoMemoryResponse")
+        return cls(eltakomessage.address, eltakomessage.payload)
+
+    def __repr__(self):
+        return "<%s row %d value %s>"%(type(self).__name__, self.row, b2a(self.value))
+
 class EltakoTimeout(EltakoStaticMessage):
     org = 0xf8
     is_request = False
@@ -419,6 +445,10 @@ class BusObject:
 
     def __repr__(self):
         return "<%s at %d size %d version %s>"%(type(self).__name__, self.address, self.size, self.version)
+
+    async def read_mem_line(self, line):
+        response = await self.bus.exchange(EltakoMemoryRequest(self.address, line), EltakoMemoryResponse)
+        return response.value
 
     async def show_off(self):
         print("Identifying on the bus")
@@ -449,11 +479,10 @@ class FUD14(BusObject):
 
         print("Reading out input programming")
         for memory_id in range(12, 128):
-            response = await(self.bus.exchange(EltakoMemoryRequest(self.address, memory_id), EltakoMessage))
-            assert response.org == 0xf1
-            assert response.address == memory_id
-            sender = response.payload[:4]
-            if response.payload[5] == 32:
+            line = await self.read_mem_line(memory_id)
+            sender = line[:4]
+            function = line[5]
+            if function == 32:
                 dimming = min(random.randint(0, 10) ** 2 + random.randint(0, 3), 100)
                 print("I'e found a programmed universal dimmer state input, sending value %d"%dimming)
                 print(await(self.bus.exchange(ESP2Message(b"\x0b\x07\x02" + bytes([dimming]) + b"\0\x09" + sender + b"\0"))))
