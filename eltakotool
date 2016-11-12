@@ -12,7 +12,10 @@ from typing import *
 import abc
 import socket
 from pathlib import Path
+import binascii
+from collections import defaultdict
 
+import yaml
 import aiocoap
 import serial.aio
 import xdg.BaseDirectory
@@ -541,6 +544,27 @@ class FSU14(BusObject):
 known_objects = [FUD14, FSR14, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14]
 
 
+class MemoryFile(defaultdict):
+    """In-memory representation of a YAML file suitable for storing, editing,
+    verifying and flashing device memory contents
+
+    The YAML file is a dict of dicts, mapping bus ids and memory lines to
+    binascii hexdumps. The MemoryFile behaves the same, but with binary strings
+    as values."""
+
+    def __init__(self):
+        defaultdict.__init__(self, lambda: {})
+
+    @classmethod
+    def load(cls, f):
+        result = cls()
+        fromfile = yaml.load(f)
+        result = cls()
+        result.update({k1: {k2: binascii.unhexlify(v2.replace(' ', '')) for (k2, v2) in v1.items()} for (k1, v1) in fromfile.items()})
+        return result
+
+    def store(self, f):
+        f.write(yaml.dump({k1: {k2: b2a(v2) for (k2, v2) in v1.items()} for (k1, v1) in self.items()}, default_flow_style=False))
 
 def buslocked(f):
     """Wraps a coroutine inside a bus locking and (finally) bus unlocking. The
@@ -557,7 +581,7 @@ def buslocked(f):
     return new_f
 
 @buslocked
-async def enumerate(bus):
+async def enumerate_cmd(bus):
     print("Scanning the bus for devices with addresses...")
     usage_map = [None]
     while len(usage_map) < 256:
@@ -750,6 +774,40 @@ async def show_off(bus, search_term=""):
             print("Playing with %r"%d)
             await d.show_off()
 
+@buslocked
+async def dump(bus, outfile):
+    memfile = MemoryFile()
+
+    for i in range(1, 255):
+        try:
+            response = await bus.exchange(EltakoDiscoveryRequest(i), EltakoDiscoveryReply)
+        except TimeoutError:
+            continue
+
+        mem = await bus.read_mem(i)
+        memfile[i] = dict(enumerate(mem))
+
+    with outfile.open('w') as f:
+        memfile.store(f)
+
+@buslocked
+async def verify(bus, infile):
+    memfile = MemoryFile.load(infile.open())
+
+    delta = 0
+
+    for device, lines in memfile.items():
+        current_memory = await bus.read_mem(device)
+        for (row, value) in lines.items():
+            if current_memory[row] != value:
+                delta += 1
+                print("Difference in device %d line %d:"%(device, row))
+                print("device:", b2a(current_memory[row]))
+                print("file:  ", b2a(value))
+
+    if delta:
+        sys.exit(1)
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--rawuri", help="URI at which a raw ESP2 resource is exposed")
@@ -775,6 +833,13 @@ def main():
     p_showoff = subp.add_parser("show_off", help="Run a demo of what is currently known of the bus")
     p_showoff.add_argument("searchterm", nargs="?", default="", help="Bus address or type name to focus on")
 
+    # FIXME allow filtering
+    p_dump = subp.add_parser("dump", help="Dump the memory contents of the devices on the bus into a given file")
+    p_dump.add_argument("filename", help="File to store the dump in (default: %(default)s)", default="bus.yaml", type=Path, nargs='?')
+
+    p_dump = subp.add_parser("verify", help="Compare the memory contents of the devices with a given dump")
+    p_dump.add_argument("filename", help="File to read the dump from (default: %(default)s)", default="bus.yaml", type=Path, nargs='?')
+
     opts = p.parse_args()
 
     if opts.command is None:
@@ -799,7 +864,7 @@ def main():
         print("done.")
 
     if opts.command == "enumerate":
-        maintask = enumerate(bus)
+        maintask = enumerate_cmd(bus)
     elif opts.command == "fakefam":
         maintask = fakefam(bus, opts.device)
     elif opts.command == "send_raw":
@@ -812,6 +877,12 @@ def main():
         maintask = unlock_bus(bus)
     elif opts.command == "show_off":
         maintask = show_off(bus, opts.searchterm)
+    elif opts.command == 'dump':
+        maintask = dump(bus, opts.filename)
+    elif opts.command == 'verify':
+        if opts.cache:
+            print("Warning: verification with cache enabled can be misleading", file=sys.stderr)
+        maintask = verify(bus, opts.filename)
     else:
         raise RuntimeError("Additional command declared but not implemented.")
 
