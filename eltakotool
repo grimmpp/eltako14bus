@@ -577,9 +577,9 @@ class MemoryFile(defaultdict):
     """In-memory representation of a YAML file suitable for storing, editing,
     verifying and flashing device memory contents
 
-    The YAML file is a dict of dicts, mapping bus ids and memory lines to
-    binascii hexdumps. The MemoryFile behaves the same, but with binary strings
-    as values."""
+    The YAML file is a dict of dicts, mapping bus ids and memory lines (or
+    memory ranges for compression) to binascii hexdumps. The MemoryFile behaves
+    the same, but with binary strings as values."""
 
     def __init__(self):
         defaultdict.__init__(self, lambda: {})
@@ -590,11 +590,46 @@ class MemoryFile(defaultdict):
         result = cls()
         fromfile = yaml.load(f)
         result = cls()
-        result.update({k1: {k2: binascii.unhexlify(v2.replace(' ', '')) for (k2, v2) in v1.items()} for (k1, v1) in fromfile.items()})
+        for k1, v1 in fromfile.items():
+            for k2, v2 in v1.items():
+                if isinstance(k2, int):
+                    k2 = [k2]
+                else:
+                    start, end = k2.split('-', 1)
+                    start, end = int(start), int(end)
+                    k2 = range(start, end + 1)
+                for k2entry in k2:
+                    result[k1][k2entry] = binascii.unhexlify(v2.replace(' ', ''))
         return result
 
     def store(self, f):
-        plainlines = yaml.dump({k1: {k2: b2a(v2) for (k2, v2) in v1.items()} for (k1, v1) in self.items()}, default_flow_style=False).split('\n')
+        for_file = {}
+        for k1, v1 in self.items():
+            for_file[k1] = dict()
+            last_start = None
+            last = None
+            for k2, v2 in v1.items():
+                if last != v2:
+                    if last is not None:
+                        # flush
+                        if last_start == k2 - 1:
+                            last_key = last_start
+                        else:
+                            last_key = "%d-%d"%(last_start, k2 - 1)
+                        for_file[k1][last_key] = last
+                    last_start = k2
+                last = v2
+            # flush end
+            if last_start == k2:
+                last_key = last_start
+            else:
+                last_key = "%d-%d"%(last_start, k2)
+            for_file[k1][last_key] = last
+
+        # to get "uncompressed" dumps:
+        # for_file = self
+
+        plainlines = yaml.dump({k1: {k2: b2a(v2) for (k2, v2) in v1.items()} for (k1, v1) in for_file.items()}, default_flow_style=False).split('\n')
         replacements = {"%d:"%k: "%d:\n# %s"%(k, v) for (k,v) in self.comments.items()}
         f.write("\n".join(replacements.get(l, l) for l in plainlines))
 
