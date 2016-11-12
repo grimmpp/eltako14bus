@@ -509,6 +509,21 @@ known_objects = [FUD14, FSR14, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FW
 
 
 
+def buslocked(f):
+    """Wraps a coroutine inside a bus locking and (finally) bus unlocking. The
+    coroutine must take a bus as its first argument."""
+    @functools.wraps(f)
+    async def new_f(bus, *args, **kwargs):
+        try:
+            print("Sending a lock command onto the bus; its reply should tell us whether there's a FAM in the game.")
+            await lock_bus(bus)
+            return await f(bus, *args, **kwargs)
+        finally:
+            print("Unlocking the bus again")
+            await unlock_bus(bus)
+    return new_f
+
+@buslocked
 async def enumerate(bus):
     print("Scanning the bus for devices with addresses...")
     usage_map = [None]
@@ -551,11 +566,10 @@ async def enumerate(bus):
             print("The device was assigned bus address %d. You may now put a further device into LRN mode."%i)
 
 
+@buslocked
 async def preread(bus):
     """Given a partial'd exchange function, read once through all addresses and all their memory content"""
 
-    print("Locking bus for prereading")
-    await lock_bus(bus)
     for i in range(256):
         try:
             r = await bus.exchange(EltakoDiscoveryRequest(address=i), EltakoDiscoveryReply)
@@ -564,8 +578,6 @@ async def preread(bus):
 
         print("Scanning memory of %d"%i)
         await bus.read_mem(i)
-    print("Unlocking bus after prereading")
-    await unlock_bus(bus)
 
 async def run_fakefam(bus, reader, writer, conn_made: Optional[asyncio.Future]=None, conn_end: Optional[asyncio.Future]=None):
     if conn_made:
@@ -657,20 +669,6 @@ async def unlock_bus(bus):
         if response.org != 0xf8:
             print("Unexpected response %r"%response)
     print("Sent some requests, but no acknowledgement from FAM; maybe we're bus master ourselves")
-
-def buslocked(f):
-    """Wraps a coroutine inside a bus locking and (finally) bus unlocking. The
-    coroutine must take a bus as its first argument."""
-    @functools.wraps(f)
-    async def new_f(bus, *args, **kwargs):
-        try:
-            print("Sending a lock command onto the bus; its reply should tell us whether there's a FAM in the game.")
-            await lock_bus(bus)
-            return await f(bus, *args, **kwargs)
-        finally:
-            print("Unlocking the bus again")
-            await unlock_bus(bus)
-    return new_f
 
 @buslocked
 async def show_off(bus, search_term=""):
