@@ -450,6 +450,10 @@ class BusObject:
     def __repr__(self):
         return "<%s at %d size %d version %s>"%(type(self).__name__, self.address, self.size, self.version)
 
+    async def read_mem(self):
+        """Simple bound wrapper for bus.read_mem"""
+        return await self.bus.read_mem(self.address)
+
     async def read_mem_line(self, line):
         response = await self.bus.exchange(EltakoMemoryRequest(self.address, line), EltakoMemoryResponse)
         return response.value
@@ -545,7 +549,7 @@ known_objects = [FUD14, FSR14, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FW
 # sorted so the first match of (discovery name is a prefix, size matches) can be used
 sorted_known_objects = sorted(known_objects, key=lambda o: len(o.discovery_name) + 0.5 * (o.size is not None), reverse=True)
 
-async def enumerate_single(bus, id):
+async def create_busobject(bus, id):
     response = await bus.exchange(EltakoMessage(org=0xf0, address=id), EltakoDiscoveryReply)
 
     assert id == response.reported_address
@@ -564,7 +568,7 @@ async def enumerate_bus(bus, *, limit_ids=None):
 
     for i in limit_ids:
         try:
-            yield enumerate_single(bus, i)
+            yield await create_busobject(bus, i)
         except TimeoutError:
             continue
 
@@ -611,18 +615,10 @@ def buslocked(f):
 @buslocked
 async def enumerate_cmd(bus):
     print("Scanning the bus for devices with addresses...")
-    usage_map = [None]
-    while len(usage_map) < 256:
-        try:
-            response = await bus.exchange(EltakoDiscoveryRequest(address=len(usage_map)), EltakoDiscoveryReply)
-        except TimeoutError:
-            usage_map.append(False)
-        else:
-            if len(usage_map) != response.reported_address:
-                raise Exception("Wrong discovery reply received. Could there be a FAM on the bus currently enumerating?")
-            print("Discovered at %d: Device sized %d, type %s"%(len(usage_map), response.reported_size, b2a(response.model)))
-            for i in range(response.reported_size):
-                usage_map.append(True)
+    usage_map = [False] * 256
+    async for dev in enumerate_bus(bus):
+        print("Discovered: %s"%dev)
+        usage_map[dev.address:dev.address+dev.size] = [True] * dev.size
 
     print("Bus scan completed.")
 
@@ -794,7 +790,7 @@ async def dump(bus, outfile):
     memfile = MemoryFile()
 
     async for dev in enumerate_bus(bus):
-        mem = await bus.read_mem(dev.address)
+        mem = await dev.read_mem()
         memfile[dev.address] = dict(enumerate(mem))
 
         memfile.comments[dev.address] = repr(dev)
@@ -808,12 +804,14 @@ async def verify(bus, infile):
 
     delta = 0
 
-    for device, lines in memfile.items():
-        current_memory = await bus.read_mem(device)
+    for devno, lines in memfile.items():
+        device = await create_busobject(bus, devno)
+
+        current_memory = await device.read_mem()
         for (row, value) in lines.items():
             if current_memory[row] != value:
                 delta += 1
-                print("Difference in device %d line %d:"%(device, row))
+                print("Difference in device %s line %d:"%(device, row))
                 print("device:", b2a(current_memory[row]))
                 print("file:  ", b2a(value))
 
@@ -828,9 +826,9 @@ async def reprogram(bus, infile):
     seen = 0
 
     for devno, lines in memfile.items():
-        device = await enumerate_single(bus, devno)
+        device = await create_busobject(bus, devno)
 
-        current_memory = await bus.read_mem(devno)
+        current_memory = await device.read_mem()
         for (row, value) in lines.items():
             if current_memory[row] == value:
                 seen += 1
