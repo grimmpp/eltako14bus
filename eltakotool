@@ -548,8 +548,6 @@ sorted_known_objects = sorted(known_objects, key=lambda o: len(o.discovery_name)
 async def enumerate_bus(bus, *, limit_ids=None):
     """Search the bus for devices, yield bus objects for every match"""
 
-    responses = []
-
     if limit_ids is None:
         limit_ids = range(1, 255)
 
@@ -562,11 +560,10 @@ async def enumerate_bus(bus, *, limit_ids=None):
             assert i == response.reported_address
             for o in sorted_known_objects:
                 if response.model.startswith(o.discovery_name) and (o.size is None or o.size == response.reported_size):
-                    responses.append(o(response, bus=bus))
+                    yield o(response, bus=bus)
                     break
             else:
                 resuls.append(BusObject(response, bus=bus))
-    return responses
 
 
 class MemoryFile(defaultdict):
@@ -769,7 +766,7 @@ async def show_off(bus, search_term=""):
         scan = [search_term_int]
         search_term = ""
 
-    for dev in await enumerate_bus(bus, limit_ids=scan):
+    async for dev in enumerate_bus(bus, limit_ids=scan):
         if not search_term or search_term.lower() in repr(dev).lower():
             devices.append(dev)
             print("Discovered %r"%dev)
@@ -793,7 +790,7 @@ async def show_off(bus, search_term=""):
 async def dump(bus, outfile):
     memfile = MemoryFile()
 
-    for dev in await enumerate_bus(bus):
+    async for dev in enumerate_bus(bus):
         mem = await bus.read_mem(dev.address)
         memfile[dev.address] = dict(enumerate(mem))
 
