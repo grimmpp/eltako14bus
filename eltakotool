@@ -236,6 +236,16 @@ class PickledBusCache(RAMBusCache):
     def __setitem__(self, k, v):
         super(PickledBusCache, self).__setitem__(k, v)
 
+        self.__save()
+
+    def pop(self, *args, **kwargs):
+        result = super(PickledBusCache, self).pop(*args, **kwargs)
+        self.__save()
+        return result
+
+    # FIXME implement all dict methods with a __save
+
+    def __save(self):
         tmpname = self._filename.with_suffix(".tmp")
         with tmpname.open('wb') as f:
             pickle.dump(dict(self), f)
