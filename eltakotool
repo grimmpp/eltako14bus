@@ -629,9 +629,14 @@ class MemoryFile(defaultdict):
         # to get "uncompressed" dumps:
         # for_file = self
 
-        plainlines = yaml.dump({k1: {k2: b2a(v2) for (k2, v2) in v1.items()} for (k1, v1) in for_file.items()}, default_flow_style=False).split('\n')
-        replacements = {"%d:"%k: "%d:\n# %s"%(k, v) for (k,v) in self.comments.items()}
-        f.write("\n".join(replacements.get(l, l) for l in plainlines))
+        for k1, v1 in for_file.items():
+            if k1 in self.comments:
+                print("%d: # %s"%(k1, self.comments[k1]), file=f)
+            else:
+                print("%d:"%k1, file=f)
+            for k2, v2 in v1.items():
+                print("    % -8s %s"%("%s:"%k2, b2a(v2)), file=f)
+            print(file=f)
 
 def buslocked(f):
     """Wraps a coroutine inside a bus locking and (finally) bus unlocking. The
