@@ -816,7 +816,7 @@ async def show_off(bus, search_term=""):
             devices.append(dev)
             print("Discovered %r"%dev)
         else:
-            print("Ignoring discovered %s at %d"%(o.__name__, i))
+            print("Ignoring discovered %s"%dev)
 
     if not devices:
         print("No matching devices found.")
