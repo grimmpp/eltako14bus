@@ -79,9 +79,11 @@ class CoAPInterface(BusInterface):
         self.address = address
 
     async def base_exchange(self, request):
-        # FIXME this should do more error handling
         coap_request = aiocoap.Message(code=aiocoap.POST, uri=self.address, payload=request.serialize())
         coap_response = await self.context.request(coap_request).response
+
+        if coap_response.code != aiocoap.CONTENT:
+            raise Exception("Unsuccessful response: %s %s"%(coap_response, coap_response.payload))
 
         return coap_response.payload
 
