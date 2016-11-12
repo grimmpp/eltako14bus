@@ -596,7 +596,7 @@ async def show_off(bus, search_term=""):
                 assert response.address == memory_id
                 sender = response.payload[:4]
                 if response.payload[5] == 32:
-                    dimming = random.randint(0, 100)
+                    dimming = min(random.randint(0, 10) ** 2 + random.randint(0, 3), 100)
                     print("I'e found a programmed universal dimmer state input, sending value %d"%dimming)
                     print(await(bus.exchange(ESP2Message(b"\x0b\x07\x02" + bytes([dimming]) + b"\0\x09" + sender + b"\0"))))
 
