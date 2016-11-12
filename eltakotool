@@ -22,6 +22,7 @@ def b2a(rawdata):
     return " ".join("%02x"%b for b in rawdata)
 
 class ParseError(ValueError): """Raised by ESP2Message and similar's .parse() method when data is unexpected"""
+class WriteError(Exception): """Raised when a write prcess does not give the expected responses"""
 class TimeoutError(Exception): """Raised by exchange if the bus timeout is encountered, or a FAM responded with a timeout message."""
 
 
@@ -450,6 +451,15 @@ class BusObject:
         response = await self.bus.exchange(EltakoMemoryRequest(self.address, line), EltakoMemoryResponse)
         return response.value
 
+    async def write_mem_line(self, row, value):
+        select_response = await self.bus.exchange(EltakoMessage(0xf2, self.address))
+        if select_response.org != 0xf2:
+            raise WriteError("Device selection failed; expected 0xf2, got %r"%select_response)
+
+        write_response = await self.bus.exchange(EltakoMessage(0xf4, row, value))
+        if write_response.org != 0xf4:
+            raise WriteError("Write failed; expected 0xf4, got %r"%write_response)
+
     async def show_off(self):
         print("Identifying on the bus")
         await self.bus.exchange(EltakoMessage(0xfd, self.address))
@@ -524,13 +534,7 @@ class FSU14(BusObject):
         hour = random.randint(0, 23)
         minutes = random.randint(0, 59)
         print("Setting clock to %02d:%02d"%(hour, minutes))
-        select_response = await self.bus.exchange(EltakoMessage(0xf2, self.address))
-        if select_response.org != 0xf2:
-            print("Selecting the clock went wrong (got %r)"%select_response)
-        else:
-            write_response = await self.bus.exchange(EltakoMessage(0xf4, 0x5d, b"\x16\x01\x01\x08" + bytes((((hour // 10) << 4) + (hour % 10), ((minutes // 10) << 4) + (minutes % 10))) + b"\x00\x01"))
-            if write_response.org != 0xf4:
-                print("Writing went wrong (got %r)"%write_response)
+        await self.write_mem_line(0x5d, b"\x16\x01\x01\x08" + bytes((((hour // 10) << 4) + (hour % 10), ((minutes // 10) << 4) + (minutes % 10))) + b"\x00\x01")
 
         await asyncio.sleep(3)
 
