@@ -523,14 +523,57 @@ class FUD14(BusObject):
                 print(await(self.bus.exchange(ESP2Message(b"\x0b\x07\x02" + bytes([dimming]) + b"\0\x09" + sender + b"\0"))))
 
 class FSR14(BusObject):
+    async def show_off(self):
+        await super().show_off()
+
+        want_switch_channel = random.randint(0, self.size - 1)
+
+        for subchannel in range(self.size):
+            print("Querying state of channel %d"%subchannel)
+            response = await(self.bus.exchange(EltakoMessage(0xfe, self.address + subchannel), EltakoMessage))
+            # this looks rps-like (
+            assert response.payload[4:] == bytes((0, 0, 0, self.address + subchannel))
+            assert response.org == 0x05
+            # even though it's an RMT and should thus behave like an
+            # EltakoMessage, this has regular enocean semantics, so what we
+            # actually mean with addr is status
+            assert response.address == 0x30
+            # and this is db1..3
+            assert not any(response.payload[1:4])
+            state = {0x50: 0, 0x70: 1}[response.payload[0]]
+            print("Channel is at %d"%state)
+
+            if subchannel == want_switch_channel:
+                want_switch_currentstate = state
+
+        print("Trying to switch subchannel %d, reading out input programming"%want_switch_channel)
+        for memory_id in range(12, 128):
+            line = await self.read_mem_line(memory_id)
+            sender = line[:4]
+            function = line[5]
+            key = line[4]
+            channels = line[6]
+            db0_for_switching = { # (function, key) to (off, on)
+                    (3, 6): (0x70, 0x50), # directional buttons enable on down, right keys
+                    (3, 5): (0x30, 0x10), # directional buttons enable on down, left keys
+                    }
+            db0 = db0_for_switching.get((function, key), (None, None))[not want_switch_currentstate]
+            if db0 is not None and channels == (1 << want_switch_channel):
+                print("Found suitable programming for direct switching of subchannel in memory row %d from %d to %d"%(memory_id, want_switch_currentstate, not want_switch_currentstate))
+                print(await self.bus.exchange(ESP2Message(b"\x0b\x05" + bytes([db0]) + b"\0\0\0" + sender + b"\30")))
+                break
+        else:
+            print("No suitable programming found for switching the subchannel")
+
+class FSR14_1x(FSR14):
     discovery_name = bytes((0x04, 0x01))
     size = 1
 
-class FSR14_2x(BusObject):
+class FSR14_2x(FSR14):
     discovery_name = bytes((0x04, 0x02))
     size = 2
 
-class FSR14_4x(BusObject):
+class FSR14_4x(FSR14):
     discovery_name = bytes((0x04, 0x01))
     size = 4
 
@@ -563,7 +606,7 @@ class FSU14(BusObject):
 
         await asyncio.sleep(3)
 
-known_objects = [FUD14, FSR14, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14]
+known_objects = [FUD14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14]
 # sorted so the first match of (discovery name is a prefix, size matches) can be used
 sorted_known_objects = sorted(known_objects, key=lambda o: len(o.discovery_name) + 0.5 * (o.size is not None), reverse=True)
 
