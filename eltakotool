@@ -262,6 +262,10 @@ class ESP2Message:
     def serialize(self):
         return b"\xa5\x5a" + self.body + bytes([sum(self.body) % 256])
 
+    @property
+    def org(self):
+        return self.body[1]
+
     @classmethod
     def parse(cls, data):
         if data[:2] != b"\xa5\x5a":
@@ -279,6 +283,8 @@ class ESP2Message:
         return "<%s %r>"%(type(self).__name__, self.body)
 
 class EltakoMessage(ESP2Message):
+    org = None # an instance attribute, no longer a property as in ESP2Message
+
     def __init__(self, org, address, payload=b"\0\0\0\0\0\0\0\0", is_request=True):
         self.org = org
         self.address = address
