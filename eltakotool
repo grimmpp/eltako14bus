@@ -545,6 +545,17 @@ known_objects = [FUD14, FSR14, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FW
 # sorted so the first match of (discovery name is a prefix, size matches) can be used
 sorted_known_objects = sorted(known_objects, key=lambda o: len(o.discovery_name) + 0.5 * (o.size is not None), reverse=True)
 
+async def enumerate_single(bus, id):
+    response = await bus.exchange(EltakoMessage(org=0xf0, address=id), EltakoDiscoveryReply)
+
+    assert id == response.reported_address
+
+    for o in sorted_known_objects:
+        if response.model.startswith(o.discovery_name) and (o.size is None or o.size == response.reported_size):
+            return o(response, bus=bus)
+    else:
+        return BusObject(response, bus=bus)
+
 async def enumerate_bus(bus, *, limit_ids=None):
     """Search the bus for devices, yield bus objects for every match"""
 
@@ -553,17 +564,9 @@ async def enumerate_bus(bus, *, limit_ids=None):
 
     for i in limit_ids:
         try:
-            response = await bus.exchange(EltakoMessage(org=0xf0, address=i), EltakoDiscoveryReply)
+            yield enumerate_single(bus, i)
         except TimeoutError:
             continue
-        else:
-            assert i == response.reported_address
-            for o in sorted_known_objects:
-                if response.model.startswith(o.discovery_name) and (o.size is None or o.size == response.reported_size):
-                    yield o(response, bus=bus)
-                    break
-            else:
-                resuls.append(BusObject(response, bus=bus))
 
 
 class MemoryFile(defaultdict):
@@ -817,6 +820,26 @@ async def verify(bus, infile):
     if delta:
         sys.exit(1)
 
+@buslocked
+async def reprogram(bus, infile):
+    memfile = MemoryFile.load(infile.open())
+
+    delta = 0
+    seen = 0
+
+    for devno, lines in memfile.items():
+        device = await enumerate_single(bus, devno)
+
+        current_memory = await bus.read_mem(devno)
+        for (row, value) in lines.items():
+            if current_memory[row] == value:
+                seen += 1
+            else:
+                delta += 1
+                await device.write_mem_line(row, value)
+
+    print("Unmodified lines: %d. Modified lines: %d"%(seen, delta))
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--rawuri", help="URI at which a raw ESP2 resource is exposed")
@@ -846,8 +869,11 @@ def main():
     p_dump = subp.add_parser("dump", help="Dump the memory contents of the devices on the bus into a given file")
     p_dump.add_argument("filename", help="File to store the dump in (default: %(default)s)", default="bus.yaml", type=Path, nargs='?')
 
-    p_dump = subp.add_parser("verify", help="Compare the memory contents of the devices with a given dump")
-    p_dump.add_argument("filename", help="File to read the dump from (default: %(default)s)", default="bus.yaml", type=Path, nargs='?')
+    p_verify = subp.add_parser("verify", help="Compare the memory contents of the devices with a given dump")
+    p_verify.add_argument("filename", help="File to read the dump from (default: %(default)s)", default="bus.yaml", type=Path, nargs='?')
+
+    p_reprogram = subp.add_parser("reprogram", help="Set the memory contents of the devices with a given dump")
+    p_reprogram.add_argument("filename", help="File to read the dump from (default: %(default)s)", default="bus.yaml", type=Path, nargs='?')
 
     opts = p.parse_args()
 
@@ -892,6 +918,8 @@ def main():
         if opts.cache:
             print("Warning: verification with cache enabled can be misleading", file=sys.stderr)
         maintask = verify(bus, opts.filename)
+    elif opts.command == 'reprogram':
+        maintask = reprogram(bus, opts.filename)
     else:
         raise RuntimeError("Additional command declared but not implemented.")
 
