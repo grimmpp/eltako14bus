@@ -13,7 +13,7 @@ import abc
 import socket
 from pathlib import Path
 import binascii
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 
 import yaml
 import aiocoap
@@ -490,6 +490,10 @@ class BusObject:
         await self.bus.exchange(EltakoMessage(0xfd, self.address))
         await asyncio.sleep(3)
 
+    @classmethod
+    def annotate_memory(cls, mem):
+        return {}
+
 class FUD14(BusObject):
     size = 1
     discovery_name = bytes((0x04, 0x04))
@@ -521,6 +525,20 @@ class FUD14(BusObject):
                 dimming = min(random.randint(0, 10) ** 2 + random.randint(0, 3), 100)
                 print("I'e found a programmed universal dimmer state input, sending value %d"%dimming)
                 print(await(self.bus.exchange(ESP2Message(b"\x0b\x07\x02" + bytes([dimming]) + b"\0\x09" + sender + b"\0"))))
+
+    @classmethod
+    def annotate_memory(cls, mem):
+        return {
+                8: MemoryFileStartOfSectionComment("function group 1"),
+                9: MemoryFileStartOfSectionComment("function group 2"),
+                12: [
+                    MemoryFileStartOfSectionComment("function group 4"),
+                    MemoryFileNibbleExplanationComment(
+                         "AD DR ES S, KY FN SP %%",
+                         "key (5 = left, 6 = right), function (eg. 32 = A5-38-08), speed, percent"),
+                    ],
+                }
+
 
 class FSR14(BusObject):
     async def show_off(self):
@@ -566,6 +584,19 @@ class FSR14(BusObject):
                 break
         else:
             print("No suitable programming found for switching the subchannel")
+
+    @classmethod
+    def annotate_memory(cls, mem):
+        return {
+                2: MemoryFileNibbleExplanationComment("R0 R1 R2 R3", "(bool)Rn = 'restore channel n on power-up"),
+                8: MemoryFileStartOfSectionComment("function group 1"),
+                12: [
+                    MemoryFileStartOfSectionComment("function group 2"),
+                    MemoryFileNibbleExplanationComment(
+                         "AD DR ES S, KY FN CH 00",
+                         "key (5 = left, 6 = right), function (3 = bottom enable, 2 = upper enable), ch = affected channels as bits"),
+                    ],
+                }
 
 class FSR14_1x(FSR14):
     discovery_name = bytes((0x04, 0x01))
@@ -647,6 +678,7 @@ class MemoryFile(defaultdict):
     def __init__(self):
         defaultdict.__init__(self, lambda: {})
         self.comments = {}
+        self.linecomments = {}
 
     @classmethod
     def load(cls, f):
@@ -667,12 +699,14 @@ class MemoryFile(defaultdict):
 
     def store(self, f):
         for_file = {}
+        linecomments_for_file = {}
         for k1, v1 in self.items():
             for_file[k1] = dict()
+            linecomments_for_file[k1] = dict()
             last_start = None
             last = None
             for k2, v2 in v1.items():
-                if last != v2:
+                if last != v2 or k2 in self.linecomments[k1]:
                     if last is not None:
                         # flush
                         if last_start == k2 - 1:
@@ -680,6 +714,7 @@ class MemoryFile(defaultdict):
                         else:
                             last_key = "%d-%d"%(last_start, k2 - 1)
                         for_file[k1][last_key] = last
+                        linecomments_for_file[k1][last_key] = self.linecomments[k1].get(last_start, [])
                     last_start = k2
                 last = v2
             # flush end
@@ -688,6 +723,7 @@ class MemoryFile(defaultdict):
             else:
                 last_key = "%d-%d"%(last_start, k2)
             for_file[k1][last_key] = last
+            linecomments_for_file[k1][last_key] = self.linecomments[k1].get(last_start, [])
 
         # to get "uncompressed" dumps:
         # for_file = self
@@ -697,9 +733,26 @@ class MemoryFile(defaultdict):
                 print("%d: # %s"%(k1, self.comments[k1]), file=f)
             else:
                 print("%d:"%k1, file=f)
+
             for k2, v2 in v1.items():
-                print("    % -8s %s"%("%s:"%k2, b2a(v2)), file=f)
+                lc = linecomments_for_file[k1][k2]
+                if not isinstance(lc, list):
+                    lc = [lc]
+                for c in lc:
+                    if isinstance(c, MemoryFileStartOfSectionComment):
+                        print("    # ------ %s"%c, file=f)
+                for c in lc:
+                    if isinstance(c, MemoryFileNibbleExplanationComment):
+                        print("    #        % -23s -- %s"%c, file=f)
+                suffixcomments = " " + ", ".join(str(c) for c in lc if isinstance(c, MemoryFileStateComment))
+                print("    % -8s %s%s"%("%s:"%k2, b2a(v2), suffixcomments.rstrip()), file=f)
             print(file=f)
+
+class MemoryFileComment: pass
+class MemoryFileStartOfSectionComment(str, MemoryFileComment): pass
+class MemoryFileNibbleExplanationComment(namedtuple("_nibbleexp", "nibbles explanation"), MemoryFileComment): pass
+class MemoryFileStateComment(str, MemoryFileComment): pass
+
 
 def buslocked(f):
     """Wraps a coroutine inside a bus locking and (finally) bus unlocking. The
@@ -897,6 +950,7 @@ async def dump(bus, outfile):
         memfile[dev.address] = dict(enumerate(mem))
 
         memfile.comments[dev.address] = repr(dev)
+        memfile.linecomments[dev.address] = dev.annotate_memory(mem)
 
     with outfile.open('w') as f:
         memfile.store(f)
