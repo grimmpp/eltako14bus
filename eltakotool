@@ -369,25 +369,26 @@ class EltakoDiscoveryReply(EltakoMessage):
     is_request = False
     address = 0
 
-    def __init__(self, reported_address, reported_size, model):
+    def __init__(self, reported_address, reported_size, memory_size, model):
         self.reported_address = reported_address
         self.reported_size = reported_size
+        self.memory_size = memory_size
         self.model = model
 
-    payload = property(lambda self: bytes((self.reported_address, self.reported_size, 0x7f, 0x08)) + self.model)
+    payload = property(lambda self: bytes((self.reported_address, self.reported_size, self.memory_size, 0x08)) + self.model)
 
     @classmethod
     def parse(cls, data):
         eltakomessage = super().parse(data)
         if eltakomessage.org != cls.org or eltakomessage.is_request != cls.is_request or eltakomessage.address != cls.address:
             raise ParseError("This is not an EltakoDiscoveryReply")
-        if eltakomessage.payload[2:4] != b"\x7f\x08":
-            print(ParseError("Assumed fixed part 7F 08 not present (found %02x %02x)"%tuple(eltakomessage.payload[2:4])))
-            #raise ParseError("Assumed fixed part 7F 08 not present (found %02x %02x)"%tuple(eltakomessage.payload[2:4]))
+        if eltakomessage.payload[3] != 0x08:
+            raise ParseError("Assumed fixed part 08 not present (found %02x)"%eltakomessage.payload[3])
         reported_address = eltakomessage.payload[0]
         reported_size = eltakomessage.payload[1]
+        memory_size = eltakomessage.payload[2]
         model = eltakomessage.payload[4:8]
-        return EltakoDiscoveryReply(reported_address, reported_size, model)
+        return EltakoDiscoveryReply(reported_address, reported_size, memory_size, model)
 
     def __repr__(self):
         return "<%s address %d size %d, model %s>"%(type(self).__name__, self.reported_address, self.reported_size, b2a(self.model))
