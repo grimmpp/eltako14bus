@@ -466,7 +466,10 @@ class BusObject:
     size = property(lambda self: self.discovery_response.reported_size)
 
     def __repr__(self):
-        return "<%s at %d size %d version %s>"%(type(self).__name__, self.address, self.size, self.version)
+        classname = type(self).__name__
+        if not hasattr(self, 'discovery_name'):
+            classname += " (%02x %02x)"%(self.discovery_response.model[0], self.discovery_response.model[1])
+        return "<%s at %d size %d version %s>"%(classname, self.address, self.size, self.version)
 
     async def read_mem(self):
         """Simple bound wrapper for bus.read_mem"""
@@ -639,7 +642,22 @@ class FSU14(BusObject):
 
         await asyncio.sleep(3)
 
-known_objects = [FUD14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14]
+class FMSR14(BusObject):
+    discovery_name = bytes((0x05, 0x15))
+    size = 5
+
+class FWZ14_65A(BusObject):
+    discovery_name = bytes((0x04, 0x66))
+    size = 1
+
+    @classmethod
+    def annotate_memory(cls, mem):
+        return {
+                1: MemoryFileNibbleExplanationComment(".. .. .. .. ..  SUM kWh", "accumulated counter value as sent in DT=0 DIV=0 telegram"),
+                5: MemoryFileNibbleExplanationComment("S0 S1 S2 S3 .. .. .. ..", "Serial number as sent in DT=1 DIV=3 TI=8 messages (once as with DB3..1 = S1 S0 00, once as S3 S2 01)")
+                }
+
+known_objects = [FUD14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A]
 # sorted so the first match of (discovery name is a prefix, size matches) can be used
 sorted_known_objects = sorted(known_objects, key=lambda o: len(o.discovery_name) + 0.5 * (o.size is not None), reverse=True)
 
