@@ -34,7 +34,10 @@ class BusInterface(metaclass=abc.ABCMeta):
         """Send a request and get back a response. The response will be of
         responsetype or (if None) any suitable ESP2Message subclass. If the
         response type fails to parse the response because it is a timeout, a
-        TimeoutError will be raised instead of the expected ParseError."""
+        TimeoutError will be raised instead of the expected ParseError.
+
+        The default implementation defers to base_exchange, but drivers are
+        invited to implement exchange in full if they can."""
 
         response = await self.base_exchange(request)
 
@@ -55,7 +58,7 @@ class BusInterface(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     async def base_exchange(self, request):
         """Exchange function without responsetype bells and whistles, returns
-        only a payload.
+        only the first resulting payload.
 
         Right now, everyone implements this -- if it becomes practical that a
         BusInterface does not, this function here should start raising
@@ -105,6 +108,7 @@ class RS485SerialInterface(BusInterface):
         self._filename = filename
 
         self.received = asyncio.Queue()
+        self._hook = None
 
     async def run(self, loop, *, conn_made=None):
         self._loop = loop
@@ -127,26 +131,61 @@ class RS485SerialInterface(BusInterface):
                 except ParseError:
                     buffered = buffered[1:]
                 else:
-                    # FIXME this is double parsing, we should better implement exchange and not base_exchange
-                    await self.received.put(buffered[:14])
-
                     buffered = buffered[14:]
 
-    def _drain(self):
-        while True:
-            try:
-                self.received.get_nowait()
-            except asyncio.QueueEmpty:
-                break
+                    if self._hook is not None and self._hook(parsed):
+                        continue # swallowed by the hook
+                    await self.received.put(parsed)
 
-    async def base_exchange(self, request):
-        self._drain()
-        self._writer.write(request.serialize())
+    async def exchange(self, request, responsetype=None):
+        """Send a request and return a response depending on responsetype as
+        BusInterface.exchange does.
+
+        Unlike that basic imlementation, this accepts messages inbetween that
+        are not of the specified type, and passes them on to the receive queue
+        if they don't match."""
+
+        if self._hook is not None:
+            raise RuntimeError("exchange is not reentrant, please serialize your access to the bus yourself.")
+
+        match = asyncio.Future()
+
+        def hook(message):
+            if responsetype is None:
+                match.set_result(prettify(message))
+                self._hook = None
+                return True
+            else:
+                try:
+                    parsed = responsetype.parse(message.serialize())
+                except ParseError:
+                    try:
+                        EltakoTimeout.parse(message.serialize())
+                    except ParseError:
+                        pass
+                    else:
+                        match.set_exception(TimeoutError)
+                        self._hook = None
+                        return True
+                    return False
+                else:
+                    match.set_result(parsed)
+                    self._hook = None
+                    return True
+
         try:
-            # FIXME this timeout is rather arbitrary
-            return await asyncio.wait_for(self.received.get(), timeout=1, loop=self._loop)
-        except asyncio.TimeoutError:
-            return EltakoTimeout().serialize()
+            self._hook = hook
+
+            self._writer.write(request.serialize())
+            try:
+                # FIXME this timeout is rather arbitrary
+                return await asyncio.wait_for(match, timeout=1, loop=self._loop)
+            except asyncio.TimeoutError:
+                raise TimeoutError
+        finally:
+            self._hook = None
+
+    base_exchange = None
 
 class ReadaheadMixin:
     """While this technically inherits from BusInterface alone, it is only
@@ -315,8 +354,9 @@ def prettify(message):
     prettify() to hand you the class you expect, later changes to the list of
     supported messages might give you a subtype or something else
     unexpected."""
-    classes = [EltakoBusLock, EltakoBusUnlock, EltakoDiscoveryRequest, EltakoDiscoveryReply,
-            EltakoMemoryRequest, EltakoMemoryResponse, EltakoTimeout, EltakoMessage]
+    classes = [EltakoBusLock, EltakoBusUnlock, EltakoDiscoveryRequest,
+            EltakoDiscoveryReply, EltakoMemoryRequest, EltakoMemoryResponse,
+            EltakoTimeout, EltakoPoll, EltakoMessage]
 
     for c in classes:
         try: return c.parse(message.serialize())
@@ -361,7 +401,7 @@ class ESP2Message:
         return ESP2Message(body)
 
     def __repr__(self):
-        return "<%s %r>"%(type(self).__name__, self.body)
+        return "<%s %r>"%(type(self).__name__, b2a(self.body))
 
 class EltakoMessage(ESP2Message):
     """A control message of the Eltako bus.
@@ -437,14 +477,9 @@ class EltakoBusUnlock(EltakoStaticMessage):
     address = 0x00
     payload = b"\0\0\0\0\0\0\0\0"
 
-class EltakoDiscoveryRequest(EltakoMessage):
-    """Solicit a DiscoveryReply from a bus participant that has a given bus
-    address. Any device in bus address learning mode will take up any
-    EltakoDiscoveryRequest, answer it and assign this as its new bus
-    address."""
-    org = 0xf0
-    is_request = True
-    payload = b"\0\0\0\0\0\0\0\0"
+class _EltakoAddressOnlyMessage(EltakoMessage):
+    """Base class for any kind of message with static data and varying
+    address"""
 
     def __init__(self, address):
         self.address = address
@@ -456,6 +491,24 @@ class EltakoDiscoveryRequest(EltakoMessage):
                 eltakomessage.payload != cls.payload:
             raise ParseError("This is not an EltakoDiscoveryRequest")
         return cls(eltakomessage.address)
+
+    def __repr__(self):
+        return "<%s to %s>" % (type(self).__name__, self.address)
+
+class EltakoPoll(_EltakoAddressOnlyMessage):
+    """Ask a bus participant to send its queued messages"""
+    org = 0xfc
+    is_request = True
+    payload = b"\0\0\0\0\0\0\0\0"
+
+class EltakoDiscoveryRequest(_EltakoAddressOnlyMessage):
+    """Solicit a DiscoveryReply from a bus participant that has a given bus
+    address. Any device in bus address learning mode will take up any
+    EltakoDiscoveryRequest, answer it and assign this as its new bus
+    address."""
+    org = 0xf0
+    is_request = True
+    payload = b"\0\0\0\0\0\0\0\0"
 
 class EltakoDiscoveryReply(EltakoMessage):
     """A data summary reporting the key parameters of a device, including its
@@ -1110,6 +1163,21 @@ async def reprogram(bus, infile):
 
     print("Unmodified lines: %d. Modified lines: %d"%(seen, delta))
 
+async def listen(bus):
+    seen_someone_polling = False
+
+    while True:
+        msg = await bus.received.get()
+        msg = prettify(msg)
+
+        if isinstance(msg, EltakoPoll):
+            if not seen_someone_polling:
+                seen_someone_polling = True
+                print("There is a device on the bus that polls for messages.")
+            continue
+
+        print(msg)
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--rawuri", help="URI at which a raw ESP2 resource is exposed")
@@ -1145,6 +1213,8 @@ def main():
 
     p_reprogram = subp.add_parser("reprogram", help="Set the memory contents of the devices with a given dump")
     p_reprogram.add_argument("filename", help="File to read the dump from (default: %(default)s)", default="bus.yaml", type=Path, nargs='?')
+
+    subp.add_parser("listen", help="Display any messages sent on the bus without sending (not supported on all backends)")
 
     opts = p.parse_args()
 
@@ -1200,6 +1270,8 @@ def main():
         maintask = verify(bus, opts.filename)
     elif opts.command == 'reprogram':
         maintask = reprogram(bus, opts.filename)
+    elif opts.command == 'listen':
+        maintask = listen(bus)
     else:
         raise RuntimeError("Additional command declared but not implemented.")
 
