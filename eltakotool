@@ -306,6 +306,15 @@ class ReadaheadPickledBusCache(ReadaheadMixin, PickledBusCache):
 
 
 def prettify(message):
+    """Given a ESP2Message, try parsing this as all the known message classes
+    and return the parsing result if it matches.
+
+    Only use this for displaying messages during debugging; when driving your
+    application logic, you should have a good idea of which messages you'd
+    expect, and try to $CLASS.parse() what's coming in. If you rely on
+    prettify() to hand you the class you expect, later changes to the list of
+    supported messages might give you a subtype or something else
+    unexpected."""
     classes = [EltakoBusLock, EltakoBusUnlock, EltakoDiscoveryRequest, EltakoDiscoveryReply,
             EltakoMemoryRequest, EltakoMemoryResponse, EltakoTimeout, EltakoMessage]
 
@@ -316,6 +325,18 @@ def prettify(message):
     return message
 
 class ESP2Message:
+    """A basic message in EnOcean Serial Protocol 2 serialization. The only
+    constraint to this class is that the message has the right length, the
+    SYNC_BYTEs are present and that the checksum matches. Everything else is
+    left to further telegram formats.
+
+    The .org property exposes the ORG byte present in most telegram formats,
+    but does not make any assertions on its meaning.
+
+    Subclasses of this implement the same interface (.parse()), but typically
+    store the parsed data internally. Their constructors differ because they
+    take a more meaningful version of the message's data.
+    """
     def __init__(self, body):
         self.body = body
 
@@ -343,6 +364,17 @@ class ESP2Message:
         return "<%s %r>"%(type(self).__name__, self.body)
 
 class EltakoMessage(ESP2Message):
+    """A control message of the Eltako bus.
+
+    Note that these messages are proprietary to Eltako, and use the RMT and TCT
+    (Receive Message Telegram, Transmit Control Telegram) h_seq values of the
+    ESP2 protocol.
+
+    This library will still try to interpret RMT/TCT telegrams as EltakoMessage
+    objects because it's the only (known) use of those.
+
+    The ORG field is used to disambiguate more detailed command types."""
+
     org = None # an instance attribute, no longer a property as in ESP2Message
 
     def __init__(self, org, address, payload=b"\0\0\0\0\0\0\0\0", is_request=True):
@@ -385,18 +417,31 @@ class EltakoStaticMessage(EltakoMessage):
         return "<%s>"%type(self).__name__
 
 class EltakoBusLock(EltakoStaticMessage):
+    """A request to lock the bus (turn on the green LEDs, make senders of
+    unsolicited messages like the FTS14 stop sending).
+
+    If there is a FAM on the bus and the bus is already locked, it will respond
+    with a DiscoveryReply (?; TBD: Verify the type of the response)."""
     org = 0xff
     is_request = True
     address = 0xff
     payload = b"\0\0\0\0\0\0\0\0"
 
 class EltakoBusUnlock(EltakoStaticMessage):
+    """A request to unlock the bus (reverse the effects of EltakoBusLock).
+
+    If there is a FAM on the bus and the bus was locked, it will respond with a
+    DiscoveryReply (?; TBD: Verify the type of the response)."""
     org = 0xff
     is_request = True
     address = 0x00
     payload = b"\0\0\0\0\0\0\0\0"
 
 class EltakoDiscoveryRequest(EltakoMessage):
+    """Solicit a DiscoveryReply from a bus participant that has a given bus
+    address. Any device in bus address learning mode will take up any
+    EltakoDiscoveryRequest, answer it and assign this as its new bus
+    address."""
     org = 0xf0
     is_request = True
     payload = b"\0\0\0\0\0\0\0\0"
@@ -413,6 +458,9 @@ class EltakoDiscoveryRequest(EltakoMessage):
         return cls(eltakomessage.address)
 
 class EltakoDiscoveryReply(EltakoMessage):
+    """A data summary reporting the key parameters of a device, including its
+    address, the number of slots it uses on the address bus, its memory size
+    and its model number."""
     org = 0xf0
     is_request = False
     address = 0
