@@ -1188,6 +1188,30 @@ async def listen(bus, ensure_unlocked):
 
         print(msg)
 
+async def auto(bus):
+    for i in range(10):
+        try:
+            response = await bus.exchange(EltakoBusLock(), EltakoDiscoveryReply)
+        except TimeoutError:
+            continue
+        print("FAM acknowledged lock after %d try(s)."%(i+1))
+        found_fam = True
+        break
+    else:
+        print("No FAM present on the bus")
+        found_fam = False
+
+    try:
+        response = await bus.exchange(EltakoBusUnlock(), EltakoDiscoveryReply)
+    except TimeoutError:
+        if found_fam:
+            print("Confused: FAM did not acknowledge lock release")
+            return
+    else:
+        if not found_fam:
+            print("Confused: FAM replied to unlock but not to lock request")
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--rawuri", help="URI at which a raw ESP2 resource is exposed")
@@ -1226,6 +1250,8 @@ def main():
 
     p_listen = subp.add_parser("listen", help="Display any messages sent on the bus without sending (not supported on all backends)")
     p_listen.add_argument("--ensure-unlocked", help="Lock and unlock the bus before listening, thus forcing a FAM to re-enumerate", action='store_true')
+
+    subp.add_parser("auto", help="Determine what's on the bus (including FAM mode), report, and listen")
 
     opts = p.parse_args()
 
@@ -1283,6 +1309,8 @@ def main():
         maintask = reprogram(bus, opts.filename)
     elif opts.command == 'listen':
         maintask = listen(bus, opts.ensure_unlocked)
+    elif opts.command == 'automode':
+        maintask = automode(bus)
     else:
         raise RuntimeError("Additional command declared but not implemented.")
 
