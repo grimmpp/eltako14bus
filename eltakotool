@@ -521,29 +521,32 @@ class EltakoDiscoveryReply(EltakoMessage):
     is_request = False
     address = 0
 
-    def __init__(self, reported_address, reported_size, memory_size, model):
+    def __init__(self, reported_address, reported_size, memory_size, model, is_fam):
         self.reported_address = reported_address
         self.reported_size = reported_size
         self.memory_size = memory_size
         self.model = model
+        self.is_fam = is_fam
 
-    payload = property(lambda self: bytes((self.reported_address, self.reported_size, self.memory_size, 0x08)) + self.model)
+    payload = property(lambda self: bytes((self.reported_address, self.reported_size, self.memory_size, 0x00 if self.is_fam else 0x08)) + self.model)
 
     @classmethod
     def parse(cls, data):
         eltakomessage = super().parse(data)
         if eltakomessage.org != cls.org or eltakomessage.is_request != cls.is_request or eltakomessage.address != cls.address:
             raise ParseError("This is not an EltakoDiscoveryReply")
-        if eltakomessage.payload[3] != 0x08:
-            raise ParseError("Assumed fixed part 08 not present (found %02x)"%eltakomessage.payload[3])
+        try:
+            is_fam = {0x00: True, 0x08: False}[eltakomessage.payload[3]]
+        except KeyError:
+            raise ParseError("Assumed fixed part 00 or 08 not present (found %02x)"%eltakomessage.payload[3])
         reported_address = eltakomessage.payload[0]
         reported_size = eltakomessage.payload[1]
         memory_size = eltakomessage.payload[2]
         model = eltakomessage.payload[4:8]
-        return EltakoDiscoveryReply(reported_address, reported_size, memory_size, model)
+        return EltakoDiscoveryReply(reported_address, reported_size, memory_size, model, is_fam)
 
     def __repr__(self):
-        return "<%s address %d size %d, model %s>"%(type(self).__name__, self.reported_address, self.reported_size, b2a(self.model))
+        return "<%s address %d size %d, model %s%s>"%(type(self).__name__, self.reported_address, self.reported_size, b2a(self.model), " (FAM)" if self.is_fam else "")
 
 class EltakoMemoryRequest(EltakoMessage):
     org = 0xf1
@@ -1188,18 +1191,26 @@ async def listen(bus, ensure_unlocked):
 
         print(msg)
 
-async def auto(bus):
-    for i in range(10):
+async def automode(bus):
+    for i in range(20):
         try:
             response = await bus.exchange(EltakoBusLock(), EltakoDiscoveryReply)
+            if not response.is_fam:
+                # typically happens when FAM is just scanning and we get one of
+                # its replies back rather than its "OK I'm locked"
+                continue
         except TimeoutError:
             continue
-        print("FAM acknowledged lock after %d try(s)."%(i+1))
+        print("FAM acknowledged lock after %d try(s); data: %s" % (i+1, response))
         found_fam = True
         break
     else:
         print("No FAM present on the bus")
         found_fam = False
+
+    # Ignore what was seen so far
+    while not bus.received.empty():
+        bus.received.get_nowait()
 
     try:
         response = await bus.exchange(EltakoBusUnlock(), EltakoDiscoveryReply)
@@ -1211,6 +1222,63 @@ async def auto(bus):
         if not found_fam:
             print("Confused: FAM replied to unlock but not to lock request")
 
+    discovery_seen_for = {}
+    spooled_scan_results = {}
+
+    # find out whether it starts scanning, and/or polling
+    async def update_discovery():
+        while True:
+            msg = await bus.received.get()
+            msg = prettify(msg)
+
+            if isinstance(msg, EltakoDiscoveryRequest):
+                print("Someone's asking for", msg.address)
+                discovery_seen_for[msg.address] = True
+                continue
+
+            if isinstance(msg, EltakoDiscoveryReply):
+                print("Acknowledging that there's a device:", msg.address, msg)
+                spooled_scan_results[msg.reported_address] = msg
+                continue
+
+            if isinstance(msg, EltakoPoll):
+                print("Polling already started, not expecting any more discovery")
+                break
+
+    update_process = asyncio.ensure_future(update_discovery())
+    resultcount = -1
+    timeout = 3
+    while True:
+        oldresultcount = resultcount
+        resultcount = len(discovery_seen_for) + len(spooled_scan_results)
+        if resultcount == oldresultcount:
+            # stagnation
+            break
+        # Wait up to 3 seconds for scanning to get something on, or until it's obviously concluded
+        try:
+            await asyncio.wait_for(asyncio.shield(update_process), timeout)
+        except asyncio.TimeoutError:
+            # 3 seconds for the first activity to be on the safe side, but then
+            # it should finish swiftly.
+            timeout = 1
+            continue
+        else:
+            break
+    # This does lose any messages that showed up after the discovery phase, but
+    # I'm currently not really interested in that.
+    update_process.cancel()
+
+    scancount = len(discovery_seen_for) + sum(s.reported_size - 1 for s in spooled_scan_results.values())
+
+    if scancount == 0:
+        print("Nobody is scanning")
+    elif scancount == 127:
+        print("Bus was scanned in full")
+
+    # NEXT STEP: dissect FAM positions
+    # 2, 3, 4: FAM found, full scan, and polling starts
+    # 5: FAM found, nobody scanning
+    # other modes? read FAM memory to find position?
 
 def main():
     p = argparse.ArgumentParser()
@@ -1251,7 +1319,7 @@ def main():
     p_listen = subp.add_parser("listen", help="Display any messages sent on the bus without sending (not supported on all backends)")
     p_listen.add_argument("--ensure-unlocked", help="Lock and unlock the bus before listening, thus forcing a FAM to re-enumerate", action='store_true')
 
-    subp.add_parser("auto", help="Determine what's on the bus (including FAM mode), report, and listen")
+    subp.add_parser("automode", help="Determine what's on the bus (including FAM mode), report, and listen")
 
     opts = p.parse_args()
 
