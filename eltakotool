@@ -100,6 +100,54 @@ class CoAPInterface(BusInterface):
 
         return tuple(full[i*row_length:(i+1)*row_length] for i in range(row_number))
 
+class RS485SerialInterface(BusInterface):
+    def __init__(self, filename):
+        self._filename = filename
+
+        self.received = asyncio.Queue()
+
+    async def run(self, loop, *, conn_made=None):
+        self._loop = loop
+        reader, self._writer = await serial_asyncio.open_serial_connection(url=self._filename, baudrate=57600, loop=loop)
+
+        if conn_made is not None:
+            conn_made.set_result(None)
+
+        buffered = b""
+
+        while True:
+            try:
+                buffered += await reader.readexactly(14 - len(buffered))
+            except asyncio.streams.IncompleteReadError:
+                # TBD: determine whether this shows up somewhere, and develop a signaling strategy
+                raise
+            while len(buffered) >= 14:
+                try:
+                    parsed = ESP2Message.parse(buffered[:14])
+                except ParseError:
+                    buffered = buffered[1:]
+                else:
+                    # FIXME this is double parsing, we should better implement exchange and not base_exchange
+                    await self.received.put(buffered[:14])
+
+                    buffered = buffered[14:]
+
+    def _drain(self):
+        while True:
+            try:
+                self.received.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+
+    async def base_exchange(self, request):
+        self._drain()
+        self._writer.write(request.serialize())
+        try:
+            # FIXME this timeout is rather arbitrary
+            return await asyncio.wait_for(self.received.get(), timeout=1, loop=self._loop)
+        except asyncio.TimeoutError:
+            return EltakoTimeout().serialize()
+
 class ReadaheadMixin:
     """While this technically inherits from BusInterface alone, it is only
     practical in connection with a BusCache because otherwise the obtained data
@@ -1017,6 +1065,7 @@ async def reprogram(bus, infile):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--rawuri", help="URI at which a raw ESP2 resource is exposed")
+    p.add_argument("--eltakobus", help="File at which a RS485 Eltako bus can be opened")
     p.add_argument("--cache", help="Store cachable responses locally", action='store_true')
     p.add_argument("--cachefile", help="File to cache responses at", type=Path)
     p.add_argument("--preread", help="Enumerate bus and read devices' memory before executing the command", action='store_true')
@@ -1054,13 +1103,22 @@ def main():
     if opts.command is None:
         raise p.error("A command is required.")
 
-    if opts.rawuri is None:
-        raise p.error("Autodiscovery is not yet implemented, please give --rawuri argument..")
+    if opts.rawuri is not None and opts.eltakobus is not None:
+        raise p.error("--rawuri and --eltakobus are conflicting options.")
+    if opts.rawuri is None and opts.eltakobus is None:
+        raise p.error("Autodiscovery is not yet implemented, please give --rawuri argument or an --eltakobus.")
 
     loop = asyncio.get_event_loop()
-    context = loop.run_until_complete(aiocoap.Context.create_client_context())
 
-    bus = CoAPInterface(context, opts.rawuri)
+    if opts.rawuri:
+        context = loop.run_until_complete(aiocoap.Context.create_client_context())
+        bus = CoAPInterface(context, opts.rawuri)
+    if opts.eltakobus:
+        bus_ready = asyncio.Future()
+        bus = RS485SerialInterface(opts.eltakobus)
+        asyncio.ensure_future(bus.run(loop, conn_made=bus_ready), loop=loop)
+        loop.run_until_complete(bus_ready)
+
     if opts.cache:
         cachefile = opts.cachefile or Path(xdg.BaseDirectory.save_cache_path("eltakotool")) / opts.rawuri.replace('/', '-')
         bus = ReadaheadPickledBusCache(bus, cachefile)
