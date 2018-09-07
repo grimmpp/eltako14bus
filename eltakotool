@@ -181,7 +181,10 @@ class RS485SerialInterface(BusInterface):
                 # FIXME this timeout is rather arbitrary
                 return await asyncio.wait_for(match, timeout=1, loop=self._loop)
             except asyncio.TimeoutError:
-                raise TimeoutError
+                if responsetype is EltakoTimeout:
+                    return EltakoTimeout()
+                else:
+                    raise TimeoutError
         finally:
             self._hook = None
 
@@ -677,7 +680,7 @@ class FUD14(BusObject):
             if function == 32:
                 dimming = min(random.randint(0, 10) ** 2 + random.randint(0, 3), 100)
                 print("I'e found a programmed universal dimmer state input, sending value %d"%dimming)
-                print(await(self.bus.exchange(ESP2Message(b"\x0b\x07\x02" + bytes([dimming]) + b"\0\x09" + sender + b"\0"))))
+                print(await(self.bus.exchange(ESP2Message(b"\x0b\x07\x02" + bytes([dimming]) + b"\0\x09" + sender + b"\0"), EltakoTimeout)))
 
     @classmethod
     def annotate_memory(cls, mem):
@@ -1108,6 +1111,9 @@ async def show_off(bus, search_term=""):
         for d in devices:
             print("Playing with %r"%d)
             await d.show_off()
+
+            while hasattr(bus, "received") and not bus.received.empty():
+                print("Meanwhile, something else happened on the bus as well: %s" % bus.received.get_nowait())
 
 @buslocked
 async def dump(bus, outfile):
