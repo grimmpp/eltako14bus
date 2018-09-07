@@ -1169,7 +1169,11 @@ async def reprogram(bus, infile):
 
     print("Unmodified lines: %d. Modified lines: %d"%(seen, delta))
 
-async def listen(bus):
+async def listen(bus, ensure_unlocked):
+    if ensure_unlocked:
+        await lock_bus(bus)
+        await unlock_bus(bus)
+
     seen_someone_polling = False
 
     while True:
@@ -1220,7 +1224,8 @@ def main():
     p_reprogram = subp.add_parser("reprogram", help="Set the memory contents of the devices with a given dump")
     p_reprogram.add_argument("filename", help="File to read the dump from (default: %(default)s)", default="bus.yaml", type=Path, nargs='?')
 
-    subp.add_parser("listen", help="Display any messages sent on the bus without sending (not supported on all backends)")
+    p_listen = subp.add_parser("listen", help="Display any messages sent on the bus without sending (not supported on all backends)")
+    p_listen.add_argument("--ensure-unlocked", help="Lock and unlock the bus before listening, thus forcing a FAM to re-enumerate", action='store_true')
 
     opts = p.parse_args()
 
@@ -1277,7 +1282,7 @@ def main():
     elif opts.command == 'reprogram':
         maintask = reprogram(bus, opts.filename)
     elif opts.command == 'listen':
-        maintask = listen(bus)
+        maintask = listen(bus, opts.ensure_unlocked)
     else:
         raise RuntimeError("Additional command declared but not implemented.")
 
