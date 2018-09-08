@@ -3,6 +3,7 @@ import abc
 import pickle
 
 from .error import ParseError, TimeoutError
+from .message import EltakoMemoryRequest, EltakoMemoryResponse, EltakoMessage, prettify
 
 class BusInterface(metaclass=abc.ABCMeta):
     async def exchange(self, request, responsetype=None):
@@ -47,7 +48,7 @@ class BusInterface(metaclass=abc.ABCMeta):
         # FIXME more stringent error handling / message type filtering
         data = []
         for j in range(256):
-            response = await self.exchange(EltakoMemoryRequest(address, j), EltakoMessage)
+            response = await self.exchange(EltakoMemoryRequest(address, j), EltakoMemoryResponse)
             data.append(response.payload)
         return tuple(data)
 
