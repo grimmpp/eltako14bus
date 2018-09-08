@@ -653,6 +653,18 @@ class BusObject:
     def annotate_memory(cls, mem):
         return {}
 
+class FAM14(BusObject):
+    size = 1
+    discovery_name = bytes((0x07, 0xff))
+
+    @classmethod
+    def annotate_memory(cls, mem):
+        return {
+                1: MemoryFileNibbleExplanationComment(
+                    "AD DR ES S, -- -- -- --",
+                    "Base address")
+                }
+
 class FUD14(BusObject):
     size = 1
     discovery_name = bytes((0x04, 0x04))
@@ -813,7 +825,7 @@ class FWZ14_65A(BusObject):
                 5: MemoryFileNibbleExplanationComment("S0 S1 S2 S3 .. .. .. ..", "Serial number as sent in DT=1 DIV=3 TI=8 messages (once as with DB3..1 = S1 S0 00, once as S3 S2 01)")
                 }
 
-known_objects = [FUD14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A]
+known_objects = [FAM14, FUD14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A]
 # sorted so the first match of (discovery name is a prefix, size matches) can be used
 sorted_known_objects = sorted(known_objects, key=lambda o: len(o.discovery_name) + 0.5 * (o.size is not None), reverse=True)
 
@@ -832,7 +844,7 @@ async def enumerate_bus(bus, *, limit_ids=None):
     """Search the bus for devices, yield bus objects for every match"""
 
     if limit_ids is None:
-        limit_ids = range(1, 255)
+        limit_ids = range(1, 256)
 
     for i in limit_ids:
         try:
@@ -1207,6 +1219,14 @@ async def automode(bus):
     else:
         print("No FAM present on the bus")
         found_fam = False
+
+    if found_fam:
+        fam_memory = await bus.read_mem(0xff)
+        memfile = MemoryFile()
+        memfile[0xff] = dict(enumerate(fam_memory))
+        memfile.linecomments[0xff] = {}
+        memfile.store(sys.stdout)
+        return
 
     # Ignore what was seen so far
     while not bus.received.empty():
