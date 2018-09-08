@@ -359,7 +359,7 @@ def prettify(message):
     unexpected."""
     classes = [EltakoBusLock, EltakoBusUnlock, EltakoDiscoveryRequest,
             EltakoDiscoveryReply, EltakoMemoryRequest, EltakoMemoryResponse,
-            EltakoTimeout, EltakoPoll, EltakoMessage]
+            EltakoTimeout, EltakoPoll, EltakoPollForced, EltakoMessage]
 
     for c in classes:
         try: return c.parse(message.serialize())
@@ -501,6 +501,12 @@ class _EltakoAddressOnlyMessage(EltakoMessage):
 class EltakoPoll(_EltakoAddressOnlyMessage):
     """Ask a bus participant to send its queued messages"""
     org = 0xfc
+    is_request = True
+    payload = b"\0\0\0\0\0\0\0\0"
+
+class EltakoPollForced(_EltakoAddressOnlyMessage):
+    """Ask a bus participant to send its status even if it is not queued for sending"""
+    org = 0xfe
     is_request = True
     payload = b"\0\0\0\0\0\0\0\0"
 
@@ -1190,6 +1196,7 @@ async def listen(bus, ensure_unlocked):
         await unlock_bus(bus)
 
     seen_someone_polling = False
+    seen_someone_force_polling = False
 
     while True:
         msg = await bus.received.get()
@@ -1199,6 +1206,12 @@ async def listen(bus, ensure_unlocked):
             if not seen_someone_polling:
                 seen_someone_polling = True
                 print("There is a device on the bus that polls for messages.")
+            continue
+
+        if isinstance(msg, EltakoPollForced):
+            if not seen_someone_force_polling:
+                seen_someone_force_polling = True
+                print("There is a device on the bus that force-polls for messages.")
             continue
 
         print(msg)
@@ -1213,7 +1226,8 @@ async def automode(bus):
                 continue
         except TimeoutError:
             continue
-        print("FAM acknowledged lock after %d try(s); data: %s" % (i+1, response))
+        if i == 0:
+            print("Bus was locked before")
         found_fam = True
         break
     else:
@@ -1221,12 +1235,11 @@ async def automode(bus):
         found_fam = False
 
     if found_fam:
-        fam_memory = await bus.read_mem(0xff)
-        memfile = MemoryFile()
-        memfile[0xff] = dict(enumerate(fam_memory))
-        memfile.linecomments[0xff] = {}
-        memfile.store(sys.stdout)
-        return
+        try:
+            fam = await create_busobject(bus, i)
+        except TimeoutError:
+            print("Confused: FAM did not allow discovery even though it acknowledged the lcok")
+            return
 
     # Ignore what was seen so far
     while not bus.received.empty():
@@ -1245,6 +1258,8 @@ async def automode(bus):
     discovery_seen_for = {}
     spooled_scan_results = {}
 
+    unprocessed_messages = []
+
     # find out whether it starts scanning, and/or polling
     async def update_discovery():
         while True:
@@ -1252,7 +1267,6 @@ async def automode(bus):
             msg = prettify(msg)
 
             if isinstance(msg, EltakoDiscoveryRequest):
-                print("Someone's asking for", msg.address)
                 discovery_seen_for[msg.address] = True
                 continue
 
@@ -1261,9 +1275,13 @@ async def automode(bus):
                 spooled_scan_results[msg.reported_address] = msg
                 continue
 
-            if isinstance(msg, EltakoPoll):
-                print("Polling already started, not expecting any more discovery")
+            if isinstance(msg, EltakoPoll) or isinstance(msg, EltakoPollForced):
+                print("%d messages queued up unprocessed when polling started" % len(unprocessed_messages))
+                print("Polling already started with %s, not expecting any more discovery" % msg)
+                unprocessed_messages.append(msg)
                 break
+
+            unprocessed_messages.append(msg)
 
     update_process = asyncio.ensure_future(update_discovery())
     resultcount = -1
@@ -1294,11 +1312,25 @@ async def automode(bus):
         print("Nobody is scanning")
     elif scancount == 127:
         print("Bus was scanned in full")
+    else:
+        print("Bus was only scanned partially?")
+
+    async def poll_watching():
+        while True:
+            if unprocessed_messages:
+                msg = unprocessed_messages.pop(0)
+            else:
+                msg = await bus.received.get()
+            print(prettify(msg))
+
+    await asyncio.Task(poll_watching())
 
     # NEXT STEP: dissect FAM positions
-    # 2, 3, 4: FAM found, full scan, and polling starts
-    # 5: FAM found, nobody scanning
-    # other modes? read FAM memory to find position?
+    # 1: looks like no FAM present on the bus, but then it's sending DiscoveryRequests all through (for bus address teach-in, according to documentation). This mode is particularly odd b/c the FAM acts like if the bus is locked all the time (does it assert HOLD?)
+    # 2, 3, 4: FAM found, full scan, and polling starts; in 4 it's forced reads.
+    # 5, 6, 7, 8: FAM found, nobody scanning (5-7 according to manual: or it only scans if programmed by the PCT to do so?)
+    # 9: similar to 5-8 but potentially odd according to documentation
+    # 10: similar to 1 in that the FAM responds to all unlocks
 
 def main():
     p = argparse.ArgumentParser()
