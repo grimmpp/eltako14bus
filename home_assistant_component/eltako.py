@@ -19,9 +19,12 @@ from eltakobus.error import TimeoutError, ParseError
 DOMAIN = 'eltako'
 
 logger = logging.getLogger('eltako')
-# setLevel still does not make things show in log viewer
-logger.debug = logger.warn
-logger.info = logger.error
+# To make other log levels than warn/error visible, set this in configuration.yml
+#
+# logger:
+#   default: warning
+#   logs:
+#     eltako: debug
 
 async def async_setup(hass, config):
     loop = asyncio.get_event_loop()
@@ -76,35 +79,54 @@ async def main(loop, serial_dev, platforms):
 
     logger.debug("Bus locked, enumerating devices")
 
+    light_entities = []
+    entities_for_status = {}
+
     bus_devices = {}
-    bus_memory = {}
     for i in range(1, 256):
         try:
             d = await device.create_busobject(bus, i)
         except TimeoutError:
             continue
+
+        # reading ahead so all the configuration data needed during
+        # find_direct_command_address and similar are available at once
+        await d.read_mem()
+        # reading ahead all polling state so we never end up with
+        # registered bus objects having an assumed state
+        # await d.force_poll_once()
+        bus_devices[i] = d
+
+        # Creating the entities while the bus is locked so they can process
+        # their initial messages right away
+
+        if isinstance(d, device.FUD14):
+            e = FUD14Entity(d, "%s-%s" % (serial_dev.replace('/', '-').lstrip('-'), i))
+            light_entities.append(e)
         else:
-            bus_devices[i] = d
-            bus_memory[i] = await d.read_mem()
+            continue
 
-    logger.debug("Found %d devices, unlocking bus", len(bus_devices))
+        logging.info("Found entity %s, asking for initial state", e)
 
+        for scan_address in range(d.address, d.address + d.size):
+            forced_answer = await bus.exchange(message.EltakoPollForced(scan_address))
+            # FIXME who's responsible for making this into an RPS/4BS message?
+            await e.process_message(forced_answer, notify=False)
+
+            # Future messages go here as well
+            entities_for_status[scan_address] = e
+
+    logger.debug("Found %d devices on the bus, unlocking bus", len(bus_devices))
     try:
         await bus.exchange(message.EltakoBusUnlock(), message.EltakoDiscoveryReply)
     except TimeoutError:
         raise RuntimeError("FAM14 did not acknowledge release of bus, please make sure it's in mode 2 or 3.")
 
-    logger.info("Creating entities for found devices")
+    logger.info("Injecting entities for found devices")
 
-    entities = {}
-
-    for i, bd in bus_devices.items():
-        if isinstance(bd, device.FUD14):
-            e = FUD14Entity(bd, bus_memory[i], "%s-%s" % (serial_dev.replace('/', '-').lstrip('-'), i))
-            entities[i] = e
-
-            add_light_entities = await platforms['light']
-            add_light_entities([e])
+    add_light_entities = await platforms['light']
+    add_light_entities(light_entities)
+    del light_entities
 
     while True:
         msg = await bus.received.get()
@@ -123,45 +145,28 @@ async def main(loop, serial_dev, platforms):
         else:
             address = msg.address[-1]
 
-        if address in entities:
-            await entities[address].process_message(msg)
+        if address in entities_for_status:
+            await entities_for_status[address].process_message(msg)
         else:
-            try:
-                msg = message.EltakoPoll.parse(msg.serialize())
-            except ParseError:
-                pass
-            else:
-                continue
-            try:
-                msg = message.EltakoPollForced.parse(msg.serialize())
-            except ParseError:
-                pass
-            else:
-                continue
-            logger.debug("Discarding message %s", msg)
+            # It's for debug only, prettify is OK here
+            msg = message.prettify(msg)
+            if type(msg) not in (message.EltakoPoll, message.EltakoPollForced):
+                logger.debug("Discarding message %s", message.prettify(msg))
 
 class FUD14Entity(Light):
     poll = False
 
-    def __init__(self, busobject, busmem, dev_id):
+    def __init__(self, busobject, unique_id):
         self.busobject = busobject
-        self.dev_id = dev_id
+        self._unique_id = unique_id
         self._name = "FUD14 [%s]" % busobject.address
         self._state = None
 
-        logger.error("Device ID is %s", dev_id)
+        # would need to do that outside, and even then 
+        # self._writable = await self.busobject.find_direct_command_address() is not None
 
-        self.dim_message = None
-
-        for line in busmem[12:128]:
-            sender = line[:4]
-            function = line[5]
-            if function == 32:
-                self.dim_message = lambda val: message.ESP2Message(b"\x0b\x07\x02" + bytes([val]) + b"\0\x09" + sender + b"\0")
-
-    @property
-    def name(self):
-        return self._name
+    unique_id = property(lambda self: self._unique_id)
+    name = property(lambda self: self._name)
 
     @property
     def is_on(self):
@@ -173,21 +178,35 @@ class FUD14Entity(Light):
 
     @property
     def brightness(self):
-        return self._state * 255 / 100
+        return self._state
 
-    async def process_message(self, msg):
+    @property
+    def assumed_state(self):
+        return self._state is None
+
+    @property
+    def state_attributes(self):
+        base = super().state_attributes
+        return {**base,
+                'eltako-bus-address': self.busobject.address,
+                'eltako-bus-size': self.busobject.size,
+                'eltako-device-version': ".".join(map(str, self.busobject.version)),
+                }
+
+    async def process_message(self, msg, notify=True):
         self._state = msg.data[1]
-        self.async_schedule_update_ha_state(False)
+        if notify:
+            self.async_schedule_update_ha_state(False)
 
     async def async_turn_on(self, **kwargs):
         if ATTR_BRIGHTNESS in kwargs:
             brightness = kwargs[ATTR_BRIGHTNESS]
         else:
             brightness = 255
-        await self.busobject.bus.exchange(self.dim_message(brightness), message.EltakoTimeout)
+        await self.busobject.set_state(brightness)
 
     async def async_turn_off(self, **kwargs):
-        await self.busobject.bus.exchange(self.dim_message(0), message.EltakoTimeout)
+        await self.busobject.set_state(0)
 
 # next steps: make .read_mem() store the memory dump in self too (or make it a
 # memo access), move update parser in there and make brightness setting methods. then all that's left for this part is to split up BusObject devices into their entity aspects.

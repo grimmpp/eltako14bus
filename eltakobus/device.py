@@ -85,6 +85,19 @@ class FUD14(BusObject):
                 return sender
         return None
 
+    async def set_state(self, dim, total_ramp_time=0):
+        """Send a telegram to set the dimming state to dim (from 0 to 255). Total ramp time is the the time in seconds """
+        sender = await self.find_direct_command_address()
+        if sender is None:
+            raise RuntimeError("Can't send without any configured universal remote")
+
+        dim = max(min(int(dim), 255), 0)
+        total_ramp_time = max(min(int(total_ramp_time), 255), 1)
+        # total_ramp_time = 0 should mean "no ramping", but in practice still
+        # ramps and sometimes slowly
+
+        await(self.bus.exchange(ESP2Message(b"\x0b\x07\x02" + bytes([dim, total_ramp_time]) + b"\x09" + sender + b"\0"), EltakoTimeout))
+
     async def show_off(self):
         await super().show_off()
 
@@ -107,7 +120,7 @@ class FUD14(BusObject):
         if sender is not None:
             dimming = min(random.randint(0, 10) ** 2 + random.randint(0, 3), 100)
             print("I'e found a programmed universal dimmer state input, sending value %d"%dimming)
-            print(await(self.bus.exchange(ESP2Message(b"\x0b\x07\x02" + bytes([dimming]) + b"\0\x09" + sender + b"\0"), EltakoTimeout)))
+            await self.set_state(dimming)
 
     @classmethod
     def annotate_memory(cls, mem):
@@ -149,6 +162,16 @@ class FSR14(BusObject):
                 return sender, db0
         return None, None
 
+    async def set_state(self, channel, state: bool):
+        command = await self.find_direct_command_address(channel)
+        if command is None:
+            raise RuntimeError("Can't send without any configured universal remote")
+
+        sender, db0s = command
+        db0 = db0s[state]
+
+        await self.bus.exchange(ESP2Message(b"\x0b\x05" + bytes([db0]) + b"\0\0\0" + sender + b"\30"), EltakoTimeout)
+
     async def show_off(self):
         await super().show_off()
 
@@ -169,11 +192,8 @@ class FSR14(BusObject):
 
         command = await self.find_direct_command_address(want_switch_channel)
         if command is not None:
-            sender, db0 = command
-
-            db0 = db0[not want_switch_currentstate]
             print("Found suitable programming for direct switching of subchannel from %d to %d"%(want_switch_currentstate, not want_switch_currentstate))
-            print(await self.bus.exchange(ESP2Message(b"\x0b\x05" + bytes([db0]) + b"\0\0\0" + sender + b"\30"), EltakoTimeout))
+            await self.set_state(want_switch_channel, not want_switch_currentstate)
         else:
             print("No suitable programming found for switching the subchannel")
 
