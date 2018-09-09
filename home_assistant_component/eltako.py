@@ -111,6 +111,7 @@ async def main(loop, serial_dev, platforms):
         for scan_address in range(d.address, d.address + d.size):
             forced_answer = await bus.exchange(message.EltakoPollForced(scan_address))
             # FIXME who's responsible for making this into an RPS/4BS message?
+            # This is implicit prettify use here.
             await e.process_message(forced_answer, notify=False)
 
             # Future messages go here as well
@@ -146,7 +147,11 @@ async def main(loop, serial_dev, platforms):
             address = msg.address[-1]
 
         if address in entities_for_status:
-            await entities_for_status[address].process_message(msg)
+            try:
+                await entities_for_status[address].process_message(msg)
+            except UnrecognizedUpdate as e:
+                logger.warn("Update to %s could not be processed: %s", address, msg)
+                logger.exception(e)
         else:
             # It's for debug only, prettify is OK here
             msg = message.prettify(msg)
@@ -178,7 +183,10 @@ class FUD14Entity(Light):
 
     @property
     def brightness(self):
-        return self._state
+        if self._state is None:
+            # see assumed_state
+            return 0
+        return self._state * 255 / 100
 
     @property
     def assumed_state(self):
@@ -194,15 +202,20 @@ class FUD14Entity(Light):
                 }
 
     async def process_message(self, msg, notify=True):
-        self._state = msg.data[1]
-        if notify:
-            self.async_schedule_update_ha_state(False)
+        processed = self.busobject.interpret_status_update(msg)
+        if 'dim' in processed:
+            self._state = processed['dim']
+            logger.debug("Read FUD14 brightness as %s", self._state)
+            if notify:
+                self.async_schedule_update_ha_state(False)
 
     async def async_turn_on(self, **kwargs):
         if ATTR_BRIGHTNESS in kwargs:
             brightness = kwargs[ATTR_BRIGHTNESS]
         else:
             brightness = 255
+        brightness = brightness * 100 / 255
+        logger.debug("Setting FUD14 to %s", brightness)
         await self.busobject.set_state(brightness)
 
     async def async_turn_off(self, **kwargs):

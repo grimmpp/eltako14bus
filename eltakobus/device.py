@@ -60,6 +60,15 @@ class BusObject:
     def annotate_memory(cls, mem):
         return {}
 
+    def interpret_status_update(self, msg):
+        """Given an EltakoWrappedRPS or EltakoWrapped4BS, take out status
+        information and present it in a class-specific dictionary.
+
+        Messages that do not fit the object raise an UnrecognizedUpdate
+        exception if it expects no updates or does not know what to make of
+        it."""
+        raise UnrecognizedUpdate("Device is not expected to send updates")
+
 class FAM14(BusObject):
     size = 1
     discovery_name = bytes((0x07, 0xff))
@@ -98,22 +107,40 @@ class FUD14(BusObject):
 
         await(self.bus.exchange(ESP2Message(b"\x0b\x07\x02" + bytes([dim, total_ramp_time]) + b"\x09" + sender + b"\0"), EltakoTimeout))
 
+    def interpret_status_update(self, msg):
+        if not isinstance(msg, EltakoWrapped4BS):
+            try:
+                msg = EltakoWrapped4BS.parse(msg.serialize())
+            except ParseError:
+                raise UnrecognizedUpdate("Not a 4BS update: %s" % msg)
+
+        if msg.address != bytes((0, 0, 0, self.address)):
+            raise UnrecognizedUpdate("4BS not originating from this device")
+
+        # parsing this as A5-38-08 telegram
+        if msg.data[0] != 0x02:
+            raise UnrecognizedUpdate("Telegram should be of subtype for dimming")
+
+        # Bits should be data (0x08), absolute (not 0x04), don't store (not 0x02), and on or off fitting the dim value (0x01)
+        expected_3 = 0x09 if msg.data[1] != 0 else 0x08
+        if msg.data[3] != expected_3:
+            raise UnrecognizedUpdate("Odd set bits for dim value %s: 0x%02x" % (msg.data[1], msg.data[3]))
+
+        return {
+                "dim": msg.data[1], # The dim value is reported in 0..100 range, even though the db2 byte says absolute.
+                "ramping_speed": msg.data[2],
+                }
+
     async def show_off(self):
         await super().show_off()
 
         print("Querying dimmer state")
         response = await(self.bus.exchange(EltakoPollForced(self.address), EltakoWrapped4BS))
-        assert response.address == bytes((0, 0, 0, self.address))
-        # parsing this as A5-38-08 telegram
 
-        assert response.data[0] == 0x02
-        print("Dimmer value is %d"%response.data[1]) # it's funny -- the FUD usually reports 'absolute', but then still has its db2 ranging from 0 to 100 instead of 255
-        print("Ramping speed is %ds to 100%%"%response.data[2])
-        print("Bits are %s, %s, %s"%(
-            ["absolute", "relative"][response.data[3] & (1 << 2)],
-            ["don't store", "store"][response.data[3] & (1 << 1)],
-            ["switch off", "switch on"][response.data[3] & (1 << 0)],
-            ))
+        parsed = self.interpret_status_update(response)
+
+        print("Dimmer value is %d"%parsed['dim'])
+        print("Ramping speed is %ds to 100%%"%parsed['ramping_speed'])
 
         print("Reading out input programming")
         sender = await self.find_direct_command_address()
