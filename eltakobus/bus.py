@@ -31,6 +31,13 @@ class BusInterface(metaclass=abc.ABCMeta):
                 raise TimeoutError
             raise
 
+    async def send(self, request):
+        """Send a request without expecting a response.
+
+        The default implementation defers to base_exchange, but drivers are
+        invited to implement exchange in full if they can."""
+        await self.base_exchange(request)
+
     @abc.abstractmethod
     async def base_exchange(self, request):
         """Exchange function without responsetype bells and whistles, returns

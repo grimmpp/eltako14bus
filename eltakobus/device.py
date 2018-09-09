@@ -106,7 +106,7 @@ class FUD14(BusObject):
         # total_ramp_time = 0 should mean "no ramping", but in practice still
         # ramps and sometimes slowly
 
-        await(self.bus.exchange(ESP2Message(b"\x0b\x07\x02" + bytes([dim, total_ramp_time]) + b"\x09" + sender + b"\0"), EltakoTimeout))
+        await self.bus.send(ESP2Message(b"\x0b\x07\x02" + bytes([dim, total_ramp_time]) + b"\x09" + sender + b"\0"))
 
     def interpret_status_update(self, msg):
         if not isinstance(msg, EltakoWrapped4BS):
@@ -198,7 +198,7 @@ class FSR14(BusObject):
         sender, db0s = command
         db0 = db0s[state]
 
-        await self.bus.exchange(ESP2Message(b"\x0b\x05" + bytes([db0]) + b"\0\0\0" + sender + b"\30"), EltakoTimeout)
+        await self.bus.send(ESP2Message(b"\x0b\x05" + bytes([db0]) + b"\0\0\0" + sender + b"\30"))
 
     async def show_off(self):
         await super().show_off()

@@ -91,4 +91,7 @@ class RS485SerialInterface(BusInterface):
         finally:
             self._hook = None
 
+    async def send(self, request):
+        self._writer.write(request.serialize())
+
     base_exchange = None
