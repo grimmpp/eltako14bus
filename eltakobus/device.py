@@ -6,6 +6,7 @@ import yaml
 
 from .util import b2a
 from .message import *
+from .error import UnrecognizedUpdate
 
 class BusObject:
     def __init__(self, response, *, bus=None):
@@ -207,10 +208,8 @@ class FSR14(BusObject):
         for subchannel in range(self.size):
             print("Querying state of channel %d"%subchannel)
             response = await(self.bus.exchange(EltakoPollForced(self.address + subchannel), EltakoWrappedRPS))
-            assert response.address == bytes((0, 0, 0, self.address + subchannel))
-            assert response.status == 0x30
-            state = {0x50: 0, 0x70: 1}[response.data[0]]
-            print("Channel is at %d"%state)
+            parsed = self.interpret_status_update(response)
+            print("Channel is at %d"%parsed[subchannel])
 
             if subchannel == want_switch_channel:
                 want_switch_currentstate = state
@@ -236,6 +235,25 @@ class FSR14(BusObject):
                          "key (5 = left, 6 = right), function (3 = bottom enable, 2 = upper enable), ch = affected channels as bits"),
                     ],
                 }
+
+    def interpret_status_update(self, msg):
+        if not isinstance(msg, EltakoWrappedRPS):
+            try:
+                msg = EltakoWrappedRPS.parse(msg.serialize())
+            except ParseError:
+                raise UnrecognizedUpdate("Not an RPS update: %s" % msg)
+
+        subchannel = msg.address[3] - self.address
+        if subchannel not in range(self.size):
+            raise UnrecognizedUpdate("RPS not originating from this device")
+        if msg.address[:3] != bytes((0, 0, 0)):
+            raise UnrecognizedUpdate("RPS not originating from the bus")
+
+        state = {0x50: False, 0x70: True}.get(msg.data[0])
+        if state is None:
+            raise UnrecognizedUpdate("Telegram is not a plain on or off message")
+
+        return {subchannel: state}
 
 class FSR14_1x(FSR14):
     discovery_name = bytes((0x04, 0x01))
