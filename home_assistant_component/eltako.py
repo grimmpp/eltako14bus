@@ -27,25 +27,30 @@ logger = logging.getLogger('eltako')
 #   logs:
 #     eltako: debug
 
+# Passing the futures around in a global rather than in discovery_info because
+# recorder would try to serialize discovery_info and die from it. (Showing a
+# "Object of type 'Future' is not JSON serializable" error, nothing else bad
+# happens at first, but I suspect that history is unavailable when that
+# happened.)
+platforms = {}
+
 async def async_setup(hass, config):
     loop = asyncio.get_event_loop()
 
     serial_dev = config['eltako'].get(CONF_DEVICE)
 
-    platforms = ['light', 'switch']
-    platforms = {k: asyncio.Future() for k in platforms}
+    global platforms
+    assert platforms == {}
+    platforms = {k: asyncio.Future() for k in ('light', 'switch')}
 
     asyncio.ensure_future(wrapped_main(loop, serial_dev, platforms), loop=loop)
 
     for platform, f in platforms.items():
-        # recorder creates an error message around this because "Object of type
-        # 'Future' is not JSON serializable", which is no big surprise, but
-        # that does not seem to harm much.
         await discovery.async_load_platform(
                 hass,
                 platform,
                 DOMAIN,
-                {'add_entities': f},
+                {},
                 config
                 )
 

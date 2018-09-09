@@ -1,4 +1,6 @@
 DEPENDENCIES = ['eltako']
 
+from .. import eltako
+
 async def async_setup_platform(hass, config, add_entities, discovery_info=None):
-    discovery_info['add_entities'].set_result(add_entities)
+    eltako.platforms['light'].set_result(add_entities)
