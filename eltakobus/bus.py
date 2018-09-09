@@ -41,15 +41,17 @@ class BusInterface(metaclass=abc.ABCMeta):
         NotImplementedError, and users should fall back to
         exchange().serialize(), or maybe this should provide that here."""
 
-    async def read_mem(self, address) -> Tuple[bytes]:
+    async def read_mem(self, address, known_memory_size=None) -> Tuple[bytes]:
         """Return the complete memory content of the bus participant with the
         given address, as queried with F1 messages."""
 
+        memory_size = known_memory_size or 255
+
         # FIXME more stringent error handling / message type filtering
         data = []
-        for j in range(256):
+        for j in range(memory_size + 1):
             response = await self.exchange(EltakoMemoryRequest(address, j), EltakoMemoryResponse)
-            data.append(response.payload)
+            data.append(response.value)
         return tuple(data)
 
 

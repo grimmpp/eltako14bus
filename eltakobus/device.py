@@ -14,6 +14,7 @@ class BusObject:
             # won't happen with the default size implementation, but another class may give a constant here
             raise ValueError("Unexpected size (got %d, expected %d for %r)"%(self.discovery_response.reported_size, self.size, self))
         self.bus = bus
+        self.memory = [None] * response.memory_size
 
     @property
     def version(self):
@@ -31,11 +32,15 @@ class BusObject:
 
     async def read_mem(self):
         """Simple bound wrapper for bus.read_mem"""
-        return await self.bus.read_mem(self.address)
+        if any(l is None for l in self.memory):
+            self.memory = await self.bus.read_mem(self.address, self.discovery_response.memory_size)
+        return self.memory
 
     async def read_mem_line(self, line):
-        response = await self.bus.exchange(EltakoMemoryRequest(self.address, line), EltakoMemoryResponse)
-        return response.value
+        if self.memory[line] is None:
+            response = await self.bus.exchange(EltakoMemoryRequest(self.address, line), EltakoMemoryResponse)
+            self.memory[line] = response.value
+        return self.memory[line]
 
     async def write_mem_line(self, row, value):
         select_response = await self.bus.exchange(EltakoMessage(0xf2, self.address))
@@ -71,6 +76,15 @@ class FUD14(BusObject):
     size = 1
     discovery_name = bytes((0x04, 0x04))
 
+    async def find_direct_command_address(self):
+        for memory_id in range(12, 128):
+            line = await self.read_mem_line(memory_id)
+            sender = line[:4]
+            function = line[5]
+            if function == 32:
+                return sender
+        return None
+
     async def show_off(self):
         await super().show_off()
 
@@ -89,14 +103,11 @@ class FUD14(BusObject):
             ))
 
         print("Reading out input programming")
-        for memory_id in range(12, 128):
-            line = await self.read_mem_line(memory_id)
-            sender = line[:4]
-            function = line[5]
-            if function == 32:
-                dimming = min(random.randint(0, 10) ** 2 + random.randint(0, 3), 100)
-                print("I'e found a programmed universal dimmer state input, sending value %d"%dimming)
-                print(await(self.bus.exchange(ESP2Message(b"\x0b\x07\x02" + bytes([dimming]) + b"\0\x09" + sender + b"\0"), EltakoTimeout)))
+        sender = await self.find_direct_command_address()
+        if sender is not None:
+            dimming = min(random.randint(0, 10) ** 2 + random.randint(0, 3), 100)
+            print("I'e found a programmed universal dimmer state input, sending value %d"%dimming)
+            print(await(self.bus.exchange(ESP2Message(b"\x0b\x07\x02" + bytes([dimming]) + b"\0\x09" + sender + b"\0"), EltakoTimeout)))
 
     @classmethod
     def annotate_memory(cls, mem):
@@ -113,6 +124,31 @@ class FUD14(BusObject):
 
 
 class FSR14(BusObject):
+    async def find_direct_command_address(self, channel):
+        """Find RPS telegram details (sender, (db0 to turn off, db0 to turn
+        on)) to send to switch the given channel"""
+        target_bitset = 1 << channel
+        for memory_id in range(12, 128):
+            line = await self.read_mem_line(memory_id)
+            sender = line[:4]
+            function = line[5]
+            key = line[4]
+            channels = line[6]
+
+            if channels != target_bitset:
+                continue
+
+            db0_for_switching = { # (function, key) to (off, on)
+                    (3, 6): (0x70, 0x50), # directional buttons enable on down, right keys
+                    (3, 5): (0x30, 0x10), # directional buttons enable on down, left keys
+                    (2, 6): (0x50, 0x70), # directional buttons enable on up, right keys
+                    (2, 5): (0x10, 0x30), # directional buttons enable on up, left keys
+                    }
+            db0 = db0_for_switching.get((function, key))
+            if db0 is not None:
+                return sender, db0
+        return None, None
+
     async def show_off(self):
         await super().show_off()
 
@@ -130,23 +166,14 @@ class FSR14(BusObject):
                 want_switch_currentstate = state
 
         print("Trying to switch subchannel %d, reading out input programming"%want_switch_channel)
-        for memory_id in range(12, 128):
-            line = await self.read_mem_line(memory_id)
-            sender = line[:4]
-            function = line[5]
-            key = line[4]
-            channels = line[6]
-            db0_for_switching = { # (function, key) to (off, on)
-                    (3, 6): (0x70, 0x50), # directional buttons enable on down, right keys
-                    (3, 5): (0x30, 0x10), # directional buttons enable on down, left keys
-                    (2, 6): (0x50, 0x70), # directional buttons enable on up, right keys
-                    (2, 5): (0x10, 0x30), # directional buttons enable on up, left keys
-                    }
-            db0 = db0_for_switching.get((function, key), (None, None))[not want_switch_currentstate]
-            if db0 is not None and channels == (1 << want_switch_channel):
-                print("Found suitable programming for direct switching of subchannel in memory row %d from %d to %d"%(memory_id, want_switch_currentstate, not want_switch_currentstate))
-                print(await self.bus.exchange(ESP2Message(b"\x0b\x05" + bytes([db0]) + b"\0\0\0" + sender + b"\30"), EltakoTimeout))
-                break
+
+        command = await self.find_direct_command_address(want_switch_channel)
+        if command is not None:
+            sender, db0 = command
+
+            db0 = db0[not want_switch_currentstate]
+            print("Found suitable programming for direct switching of subchannel from %d to %d"%(want_switch_currentstate, not want_switch_currentstate))
+            print(await self.bus.exchange(ESP2Message(b"\x0b\x05" + bytes([db0]) + b"\0\0\0" + sender + b"\30"), EltakoTimeout))
         else:
             print("No suitable programming found for switching the subchannel")
 
@@ -247,6 +274,13 @@ class MemoryFile(defaultdict):
         defaultdict.__init__(self, lambda: {})
         self.comments = {}
         self.linecomments = {}
+
+    async def add_device(self, dev: BusObject):
+        mem = await dev.read_mem()
+        self[dev.address] = dict(enumerate(mem))
+
+        self.comments[dev.address] = repr(dev)
+        self.linecomments[dev.address] = dev.annotate_memory(mem)
 
     @classmethod
     def load(cls, f):

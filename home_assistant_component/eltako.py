@@ -188,3 +188,6 @@ class FUD14Entity(Light):
 
     async def async_turn_off(self, **kwargs):
         await self.busobject.bus.exchange(self.dim_message(0), message.EltakoTimeout)
+
+# next steps: make .read_mem() store the memory dump in self too (or make it a
+# memo access), move update parser in there and make brightness setting methods. then all that's left for this part is to split up BusObject devices into their entity aspects.

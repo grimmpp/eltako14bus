@@ -219,11 +219,7 @@ async def dump(bus, outfile):
     memfile = MemoryFile()
 
     async for dev in enumerate_bus(bus):
-        mem = await dev.read_mem()
-        memfile[dev.address] = dict(enumerate(mem))
-
-        memfile.comments[dev.address] = repr(dev)
-        memfile.linecomments[dev.address] = dev.annotate_memory(mem)
+        await memfile.add_device(dev)
 
     with outfile.open('w') as f:
         memfile.store(f)
