@@ -462,14 +462,16 @@ def main():
     if opts.rawuri:
         context = loop.run_until_complete(aiocoap.Context.create_client_context())
         bus = CoAPInterface(context, opts.rawuri)
+        cache_rawpart = opts.rawuri.replace('/', '-')
     if opts.eltakobus:
         bus_ready = asyncio.Future()
         bus = RS485SerialInterface(opts.eltakobus)
         asyncio.ensure_future(bus.run(loop, conn_made=bus_ready), loop=loop)
         loop.run_until_complete(bus_ready)
+        cache_rawpart = opts.eltakobus.replace('/', '-')
 
     if opts.cache:
-        cachefile = opts.cachefile or Path(xdg.BaseDirectory.save_cache_path("eltakotool")) / opts.rawuri.replace('/', '-')
+        cachefile = opts.cachefile or Path(xdg.BaseDirectory.save_cache_path("eltakotool")) / cache_rawpart
         bus = ReadaheadPickledBusCache(bus, cachefile)
 
     if opts.preread:
