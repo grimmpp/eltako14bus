@@ -14,7 +14,8 @@ def prettify(message):
     classes = [EltakoBusLock, EltakoBusUnlock, EltakoDiscoveryRequest,
             EltakoDiscoveryReply, EltakoMemoryRequest, EltakoMemoryResponse,
             EltakoTimeout, EltakoPoll, EltakoPollForced, EltakoWrappedRPS,
-            EltakoWrapped4BS, EltakoMessage]
+            EltakoWrapped4BS, RPSMessage, Regular4BSMessage, TeachIn4BSMessage2,
+            EltakoMessage]
 
     for c in classes:
         try: return c.parse(message.serialize())
@@ -60,6 +61,99 @@ class ESP2Message:
 
     def __repr__(self):
         return "<%s %r>"%(type(self).__name__, b2a(self.body))
+
+class RPSMessage(ESP2Message):
+    """An incoming or outgoing RPS (1 byte, switch) telegram"""
+    org = 0x05
+
+    def __init__(self, address, status, data, outgoing=False):
+        self.address = address
+        self.status = status
+        self.data = data
+        self.outgoing = outgoing
+
+    h_seq = property(lambda self: 3 if self.outgoing else 0)
+
+    body = property(lambda self: bytes(((self.h_seq << 5) + 11, self.org, *self.data, 0, 0, 0, *self.address, self.status)))
+
+    @classmethod
+    def parse(cls, data):
+        esp2message = super().parse(data)
+        try:
+            outgoing = {(3 << 5) + 11: True, (0 << 5) + 11: False}[esp2message.body[0]]
+        except KeyError:
+            raise ParseError("Code is neither RRT nor TRT")
+        if esp2message.body[1] != cls.org:
+            raise ParseError("Not an RPS message")
+        data = esp2message.body[2:3]
+        if any(esp2message.body[3:6]):
+            raise ParseError("RPS message should not carry db1..3")
+        address = esp2message.body[6:10]
+        status = esp2message.body[10]
+        return cls(address, status, data, outgoing)
+
+    t21 = property(lambda self: 2 if (self.status >> 5) & 1 else 1)
+    nu = property(lambda self: "N" if (self.status >> 4) & 1 else "U")
+    rp_count = property(lambda self: self.status & 0xf)
+
+    def __repr__(self):
+        return "<%s from %s, db0 = %s, status = 0x%02x (T%s, %s, %d repetitions)>"%(type(self).__name__, b2a(self.address), b2a(self.data), self.status, self.t21, self.nu, self.rp_count)
+
+class _4BSMessage(ESP2Message):
+    org = 0x07
+
+    def __init__(self, address, status, data, outgoing=False):
+        self.address = address
+        self.status = status
+        self.data = data
+        self.outgoing = outgoing
+
+    h_seq = property(lambda self: 3 if self.outgoing else 0)
+
+    body = property(lambda self: bytes(((self.h_seq << 5) + 11, self.org, *self.data, *self.address, self.status)))
+
+    @classmethod
+    def parse(cls, data):
+        esp2message = super().parse(data)
+        try:
+            outgoing = {(3 << 5) + 11: True, (0 << 5) + 11: False}[esp2message.body[0]]
+        except KeyError:
+            raise ParseError("Code is neither RRT nor TRT")
+        if esp2message.body[1] != cls.org:
+            raise ParseError("Not a 4BS message")
+        data = esp2message.body[2:6]
+        teach_in = not (data[3] & 0x08)
+        if teach_in != cls.teach_in:
+            raise ParseError("LRN bit does not match")
+        address = esp2message.body[6:10]
+        status = esp2message.body[10]
+        return cls(address, status, data, outgoing)
+
+class Regular4BSMessage(_4BSMessage):
+    teach_in = False
+
+    def __repr__(self):
+        return "<%s from %s, data %s, status = 0x%02x>"%(type(self).__name__, b2a(self.address), b2a(self.data), self.status)
+
+class TeachIn4BSMessage2(_4BSMessage):
+    """A Variation 2 (LRN type 1 and nothing bidirectional) 4BS Teach-In telegram"""
+    teach_in = True
+
+    @classmethod
+    def parse(cls, data):
+        # The status is largely ignored, but that's consistent with the
+        # documentation where it gets no mention either
+
+        any_teach_in = super().parse(data)
+        if any_teach_in.data[3] != 0x80:
+            raise ParseError("This is not a plain Variation 2 teach-in telegram")
+        return any_teach_in
+
+    profile = property(lambda self: (0xa5, self.data[0] >> 2, ((self.data[0] & 0x03) << 5) | (self.data[1] >> 3)))
+    manufacturer = property(lambda self: ((self.data[1] & 0x07) << 8) | self.data[2])
+
+    def __repr__(self):
+        return "<%s from %s, profile %02x-%02x-%02x, manufacturer %d>"%(type(self).__name__, b2a(self.address), *self.profile, self.manufacturer)
 
 class EltakoMessage(ESP2Message):
     """A control message of the Eltako bus.
