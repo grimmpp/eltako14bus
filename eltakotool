@@ -488,7 +488,12 @@ def main():
     elif opts.command == "send_raw":
         maintask = send_raw(bus, opts.data)
     elif opts.command == "eval":
-        maintask = bus.exchange(eval(opts.expr))
+        async def maintask(opts):
+            msg = eval(opts.expr)
+            print("Request: ", prettify(msg))
+            response = await bus.exchange(msg)
+            print("Response:", response)
+        maintask = maintask(opts)
     elif opts.command == "lock_bus":
         maintask = lock_bus(bus)
     elif opts.command == "unlock_bus":
