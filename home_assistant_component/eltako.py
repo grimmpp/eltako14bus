@@ -15,6 +15,7 @@ sys.path.append(__file__[:__file__.rfind('/')])
 from eltakobus.serial import RS485SerialInterface
 from eltakobus import device
 from eltakobus import message
+from eltakobus import locking
 from eltakobus.error import TimeoutError, ParseError, UnrecognizedUpdate
 
 DOMAIN = 'eltako'
@@ -74,17 +75,9 @@ async def main(loop, serial_dev, platforms):
     logger.info("Serial device detected and ready")
 
     logger.debug("Locking bus")
-    for i in range(20):
-        try:
-            response = await bus.exchange(message.EltakoBusLock(), message.EltakoDiscoveryReply)
-            if not response.is_fam:
-                # typically happens when FAM is just scanning and we get one of
-                # its replies back rather than its "OK I'm locked"
-                continue
-        except TimeoutError:
-            continue
+    bus_status = await locking.lock_bus(bus)
 
-    logger.debug("Bus locked, enumerating devices")
+    logger.debug("Bus locked (%s), enumerating devices", bus_status)
 
     light_entities = []
     switch_entities = []
@@ -127,10 +120,8 @@ async def main(loop, serial_dev, platforms):
         await entity.process_message(forced_answer, notify=False)
 
     logger.debug("Unlocking bus")
-    try:
-        await bus.exchange(message.EltakoBusUnlock(), message.EltakoDiscoveryReply)
-    except TimeoutError:
-        raise RuntimeError("FAM14 did not acknowledge release of bus, please make sure it's in mode 2 or 3.")
+    bus_status = await locking.unlock_bus(bus)
+    logger.debug("Bus unlocked (%s)", bus_status)
 
     logger.debug("Injecting entities for found devices")
 

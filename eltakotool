@@ -154,28 +154,10 @@ async def send_raw(bus, data):
     print(prettify(await bus.exchange(ESP2Message(bytes(data)), ESP2Message)))
 
 async def lock_bus(bus):
-    for i in range(10):
-        try:
-            response = await bus.exchange(EltakoBusLock(), EltakoMessage)
-        except TimeoutError:
-            continue
-        if response.org == 0xf0:
-            print("FAM acknowledged lock after %d try(s)."%(i+1))
-            return
-        else:
-            print("Unexpected message: %s"%response)
-    print("Sent some requests, but no acknowledgement from FAM")
+    print(await(locking.lock_bus(bus)))
 
 async def unlock_bus(bus):
-    # probably we don't need to repeat that at all
-    for i in range(5):
-        response = await bus.exchange(EltakoBusUnlock(), EltakoMessage)
-        if response.org == 0xf0:
-            print("FAM acknowledged return to regular operation (%s)"%response)
-            return
-        if response.org != 0xf8:
-            print("Unexpected response %r"%response)
-    print("Sent some requests, but no acknowledgement from FAM; maybe we're bus master ourselves")
+    print(await(locking.unlock_bus(bus)))
 
 @buslocked
 async def show_off(bus, search_term=""):
