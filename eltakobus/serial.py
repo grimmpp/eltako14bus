@@ -7,6 +7,11 @@ from .error import ParseError, TimeoutError
 from .message import ESP2Message, prettify, EltakoTimeout
 
 class RS485SerialInterface(BusInterface):
+    """Implementation of the BusInterface as POSIX Serial device.
+
+    Note that this relies on the UART to be configured to drive the bus only
+    when data is being sent, as for example done by the Digitus adapters.
+    """
     def __init__(self, filename):
         self._filename = filename
 
