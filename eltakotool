@@ -212,7 +212,7 @@ async def show_off(bus, search_term=""):
             await d.show_off()
 
             while hasattr(bus, "received") and not bus.received.empty():
-                print("Meanwhile, something else happened on the bus as well: %s" % bus.received.get_nowait())
+                print("Meanwhile, something else happened on the bus as well: %s" % prettify(bus.received.get_nowait()))
 
 @buslocked
 async def dump(bus, outfile):

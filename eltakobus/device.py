@@ -205,6 +205,8 @@ class FSR14(BusObject):
 
         want_switch_channel = random.randint(0, self.size - 1)
 
+        print("Will try to switch subchannel %d later" % want_switch_channel)
+
         for subchannel in range(self.size):
             print("Querying state of channel %d"%subchannel)
             response = await(self.bus.exchange(EltakoPollForced(self.address + subchannel), EltakoWrappedRPS))
@@ -212,9 +214,9 @@ class FSR14(BusObject):
             print("Channel is at %d"%parsed[subchannel])
 
             if subchannel == want_switch_channel:
-                want_switch_currentstate = state
+                want_switch_currentstate = parsed[subchannel]
 
-        print("Trying to switch subchannel %d, reading out input programming"%want_switch_channel)
+        print("eading out input programming")
 
         command = await self.find_direct_command_address(want_switch_channel)
         if command is not None:
