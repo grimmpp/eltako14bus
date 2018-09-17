@@ -61,9 +61,9 @@ class RS485SerialInterface(BusInterface):
                 raise
             while len(buffered) >= 14:
                 if self.suppress_echo:
-                    # purge entries older than 10s, they might have had
+                    # purge entries older than 3s, they might have had
                     # collisions and thus did not report correctly
-                    while self._suppress and self._suppress[0][0] < time.time() - 10:
+                    while self._suppress and self._suppress[0][0] < time.time() - 3:
                         self._suppress.pop(0)
                     if self._suppress and buffered[:14] == self._suppress[0][1]:
                         buffered = buffered[14:]
