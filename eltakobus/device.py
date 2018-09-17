@@ -156,7 +156,7 @@ class FUD14(BusObject):
                 8: MemoryFileStartOfSectionComment("function group 1"),
                 9: MemoryFileStartOfSectionComment("function group 2"),
                 12: [
-                    MemoryFileStartOfSectionComment("function group 4"),
+                    MemoryFileStartOfSectionComment("function group 3"),
                     MemoryFileNibbleExplanationComment(
                          "AD DR ES S, KY FN SP %%",
                          "key (5 = left, 6 = right), function (eg. 32 = A5-38-08), speed, percent"),
@@ -316,6 +316,14 @@ class FWZ14_65A(BusObject):
 class FSG14_1_10V(BusObject):
     discovery_name = bytes((0x04, 0x07))
     size = 1
+
+    # appears to behave the same way in the known areas as FUD14 -- all GUIs
+    # options in the PCT tool even look the same
+    annotate_memory = FUD14.annotate_memory
+    find_direct_command_address = FUD14.find_direct_command_address
+    set_state = FUD14.set_state
+    interpret_status_update = FUD14.interpret_status_update
+
 
 known_objects = [FAM14, FUD14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A, FSG14_1_10V]
 # sorted so the first match of (discovery name is a prefix, size matches) can be used

@@ -141,10 +141,10 @@ class EltakoBusController:
             # Creating the entities while the bus is locked so they can process
             # their initial messages right away
 
-            if isinstance(d, device.FUD14):
-                e = FUD14Entity(d, unique_id_prefix)
+            if isinstance(d, device.FUD14) or isinstance(d, device.FSG14_1_10V):
+                e = DimmerEntity(type(d).__name__, d, unique_id_prefix)
                 entities_for_status[d.address] = e
-                logger.info("Created FUD14 entity for %s", d)
+                logger.info("Created dimmer entity for %s", d)
                 platforms['light']([e])
             elif isinstance(d, device.FSR14):
                 for subchannel in range(d.size):
@@ -335,11 +335,11 @@ class EltakoEntity:
     unique_id = property(lambda self: self._unique_id)
     name = property(lambda self: self._name)
 
-class FUD14Entity(EltakoEntity, Light):
-    def __init__(self, busobject, unique_id_prefix):
+class DimmerEntity(EltakoEntity, Light):
+    def __init__(self, typename, busobject, unique_id_prefix):
         self.busobject = busobject
         self._unique_id = "%s-%s" % (unique_id_prefix, busobject.address)
-        self._name = "FUD14 [%s]" % busobject.address
+        self._name = "%s [%s]" % (typename, busobject.address)
         self._state = None
 
         # would need to do that outside, and even then
@@ -376,7 +376,7 @@ class FUD14Entity(EltakoEntity, Light):
         processed = self.busobject.interpret_status_update(msg)
         if 'dim' in processed:
             self._state = processed['dim']
-            logger.debug("Read FUD14 brightness as %s", self._state)
+            logger.debug("Read brightness as %s", self._state)
             if notify:
                 self.async_schedule_update_ha_state(False)
     async def async_turn_on(self, **kwargs):
@@ -385,7 +385,7 @@ class FUD14Entity(EltakoEntity, Light):
         else:
             brightness = 255
         brightness = brightness * 100 / 255
-        logger.debug("Setting FUD14 to %s", brightness)
+        logger.debug("Setting brightness to %s", brightness)
         await self.busobject.set_state(brightness)
 
     async def async_turn_off(self, **kwargs):
