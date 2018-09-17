@@ -59,7 +59,32 @@ async def async_setup(hass, config):
 
 class EltakoBusController:
     def __init__(self, hass, loop, config, platforms):
-        self._task = asyncio.ensure_future(self.wrapped_main(hass, loop, config, platforms), loop=loop)
+        self.loop = loop
+        self.hass = hass
+        self.config = config
+        self._main_task = asyncio.ensure_future(self.wrapped_main(platforms), loop=loop)
+        self._bus_task = None
+
+    async def initialize_bus_task(self, run):
+        """Call bus.run in a task that takes down main if it crashes, and is
+        properly shut down as well"""
+        if self._bus_task is not None:
+            self._bus_task.cancel()
+
+        conn_made = asyncio.Future()
+        self._bus_task = asyncio.ensure_future(run(self.loop, conn_made=conn_made))
+        def bus_done(bus_future, _main=self._main_task):
+            self._bus_task = None
+            try:
+                result = bus_future.result()
+            except Exception as e:
+                logger.error("Bus task terminated with %s, removing main task", bus_future.exception())
+                logger.exception(e)
+            else:
+                logger.error("Bus task terminated with %s (it should have raised an exception instead), removing main task", result)
+            _main.cancel()
+        self._bus_task.add_done_callback(bus_done)
+        await conn_made
 
     async def wrapped_main(self, *args):
         try:
@@ -68,25 +93,26 @@ class EltakoBusController:
             logger.exception(e)
             # FIXME should I just restart with back-off?
 
-    async def main(self, hass, loop, config, platforms):
+        if self._bus_task is not None:
+            self._bus_task.cancel()
+
+    async def main(self, platforms):
         logger.debug("Waiting for platforms to register")
         for p in platforms:
             platforms[p] = await platforms[p]
         logger.debug("Platforms registered")
 
 
-        serial_dev = config['eltako'].get(CONF_DEVICE)
-        teachin_preconfigured = config['eltako'].get('teach-in', {})
+        serial_dev = self.config['eltako'].get(CONF_DEVICE)
+        teachin_preconfigured = self.config['eltako'].get('teach-in', {})
 
-        teachins = TeachInCollection(hass, teachin_preconfigured, platforms['sensor'])
+        teachins = TeachInCollection(self.hass, teachin_preconfigured, platforms['sensor'])
 
 
         bus = RS485SerialInterface(serial_dev, log=logger.getChild('serial'))
         unique_id_prefix = serial_dev.replace('/', '-').lstrip('-')
 
-        bus_ready = asyncio.Future()
-        bus_loop = asyncio.ensure_future(bus.run(loop, conn_made=bus_ready), loop=loop)
-        await bus_ready
+        await self.initialize_bus_task(bus.run)
 
         logger.info("Serial device detected and ready")
 
