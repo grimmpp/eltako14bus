@@ -34,7 +34,7 @@ class BusObject:
     async def read_mem(self):
         """Simple bound wrapper for bus.read_mem"""
         if any(l is None for l in self.memory):
-            self.memory = await self.bus.read_mem(self.address, self.discovery_response.memory_size)
+            self.memory = list(await self.bus.read_mem(self.address, self.discovery_response.memory_size))
         return self.memory
 
     async def read_mem_line(self, line):
@@ -51,6 +51,9 @@ class BusObject:
         write_response = await self.bus.exchange(EltakoMessage(0xf4, row, value))
         if write_response.org != 0xf4:
             raise WriteError("Write failed; expected 0xf4, got %r"%write_response)
+
+        # Update cache
+        self.memory[row] = value
 
     async def show_off(self):
         print("Identifying on the bus")
