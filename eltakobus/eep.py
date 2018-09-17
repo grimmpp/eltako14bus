@@ -64,3 +64,7 @@ class TempHumSensor(EEP):
 
 class A5_04_01(TempHumSensor): min = 0; max = 40
 class A5_04_02(TempHumSensor): min = -20; max = 60
+
+class A5_38_08(EEP):
+    """So far, only a sentinel -- later, eltakobus.device should make use of
+    this for en- and decoding"""

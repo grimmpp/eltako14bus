@@ -7,6 +7,7 @@ import yaml
 from .util import b2a
 from .message import *
 from .error import UnrecognizedUpdate
+from .eep import A5_38_08
 
 class BusObject:
     def __init__(self, response, *, bus=None):
@@ -85,11 +86,18 @@ class FAM14(BusObject):
                     "Base address")
                 }
 
-class FUD14(BusObject):
-    size = 1
-    discovery_name = bytes((0x04, 0x04))
+class DimmerStyle(BusObject):
+    """Devices that work just the same as a FUD14. FSG14_1_10V appears to
+    behave the same way in the known areas as that -- all GUIs options in the
+    PCT tool even look the same."""
+
+    _explicitly_configured_command_address = None
 
     async def find_direct_command_address(self):
+        if self._explicitly_configured_command_address is not None:
+            # Taking this as a shortcut allows things to work smoothly even if
+            # a group-addressed A5_38_08 is present early in the configuration
+            return self._explicitly_configured_command_address
         for memory_id in range(12, 128):
             line = await self.read_mem_line(memory_id)
             sender = line[:4]
@@ -97,6 +105,33 @@ class FUD14(BusObject):
             if function == 32:
                 return sender
         return None
+
+    async def ensure_direct_command_address(self):
+        # Choosing (0, 0, 0, address) because that's where they send from --
+        # but in EltakoWrapped messages. So this address should, for other
+        # purposes, be free.
+        source_address = bytes((0, 0, 0, self.address))
+        await self.ensure_programmed(source_address, A5_38_08)
+        self._explicitly_configured_command_address = source_address
+
+    async def ensure_programmed(self, source, profile):
+        if profile is A5_38_08:
+            # programmed as function 32, 1s ramp speed (0 seems not to mean "instant")
+            expected_line = source + bytes((0, 32, 1, 0))
+        else:
+            raise ValueError("It is unknown how this profile could be programmed in.")
+
+        first_empty = None
+        for memory_id in range(12, 128):
+            line = await self.read_mem_line(memory_id)
+            if line == expected_line:
+                return
+            if not any(line) and first_empty is None:
+                first_empty = memory_id
+        if first_empty is None:
+            raise RuntimeError("No free memory to configure this function")
+        self.bus.log.info("%s: Writing programming for profile %s in line %d", self, profile, first_empty)
+        await self.write_mem_line(first_empty, expected_line)
 
     async def set_state(self, dim, total_ramp_time=0):
         """Send a telegram to set the dimming state to dim (from 0 to 255). Total ramp time is the the time in seconds """
@@ -165,6 +200,10 @@ class FUD14(BusObject):
                          "key (5 = left, 6 = right), function (eg. 32 = A5-38-08), speed, percent"),
                     ],
                 }
+
+class FUD14(DimmerStyle):
+    size = 1
+    discovery_name = bytes((0x04, 0x04))
 
 
 class FSR14(BusObject):
@@ -316,16 +355,9 @@ class FWZ14_65A(BusObject):
                 5: MemoryFileNibbleExplanationComment("S0 S1 S2 S3 .. .. .. ..", "Serial number as sent in DT=1 DIV=3 TI=8 messages (once as with DB3..1 = S1 S0 00, once as S3 S2 01)")
                 }
 
-class FSG14_1_10V(BusObject):
+class FSG14_1_10V(DimmerStyle):
     discovery_name = bytes((0x04, 0x07))
     size = 1
-
-    # appears to behave the same way in the known areas as FUD14 -- all GUIs
-    # options in the PCT tool even look the same
-    annotate_memory = FUD14.annotate_memory
-    find_direct_command_address = FUD14.find_direct_command_address
-    set_state = FUD14.set_state
-    interpret_status_update = FUD14.interpret_status_update
 
 
 known_objects = [FAM14, FUD14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A, FSG14_1_10V]

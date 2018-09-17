@@ -1,5 +1,6 @@
 import asyncio
 import time
+import logging
 
 import serial_asyncio
 

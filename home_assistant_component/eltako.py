@@ -141,7 +141,8 @@ class EltakoBusController:
             # Creating the entities while the bus is locked so they can process
             # their initial messages right away
 
-            if isinstance(d, device.FUD14) or isinstance(d, device.FSG14_1_10V):
+            if isinstance(d, device.DimmerStyle):
+                await d.ensure_direct_command_address()
                 e = DimmerEntity(type(d).__name__, d, unique_id_prefix)
                 entities_for_status[d.address] = e
                 logger.info("Created dimmer entity for %s", d)
