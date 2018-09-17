@@ -38,7 +38,7 @@ class RS485SerialInterface(BusInterface):
                 echotest = b'\xff\x00\xff'
                 self._writer.write(echotest)
                 try:
-                    read = await asyncio.wait_for(reader.readexactly(len(echotest)), timeout=0.1, loop=self._loop)
+                    read = await asyncio.wait_for(reader.readexactly(len(echotest)), timeout=0.5, loop=self._loop)
                 except asyncio.TimeoutError:
                     self.suppress_echo = False
                     self.log.debug("No echo detected on the line")
