@@ -322,9 +322,9 @@ known_objects = [FAM14, FUD14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D,
 sorted_known_objects = sorted(known_objects, key=lambda o: len(o.discovery_name) + 0.5 * (o.size is not None), reverse=True)
 
 async def create_busobject(bus, id):
-    response = await bus.exchange(EltakoMessage(org=0xf0, address=id), EltakoDiscoveryReply)
+    response = await bus.exchange(EltakoDiscoveryRequest(address=id), EltakoDiscoveryReply)
 
-    assert id == response.reported_address
+    assert id == response.reported_address, "Queried for ID %s, received %s" % (id, prettify(response))
 
     for o in sorted_known_objects:
         if response.model.startswith(o.discovery_name) and (o.size is None or o.size == response.reported_size):

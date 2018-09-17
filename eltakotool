@@ -201,7 +201,10 @@ async def dump(bus, outfile):
     memfile = MemoryFile()
 
     async for dev in enumerate_bus(bus):
-        await memfile.add_device(dev)
+        try:
+            await memfile.add_device(dev)
+        except TimeoutError:
+            print("Read error, skipping: Device %s announces %d memory but produces timeouts at reading" % (dev, dev.discovery_response.memory_size))
 
     with outfile.open('w') as f:
         memfile.store(f)

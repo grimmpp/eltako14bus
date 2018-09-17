@@ -89,9 +89,14 @@ async def main(loop, serial_dev, platforms):
         except TimeoutError:
             continue
 
+        logger.debug("Found device %s", d)
+
         # reading ahead so all the configuration data needed during
         # find_direct_command_address and similar are available at once
-        await d.read_mem()
+        try:
+            await d.read_mem()
+        except TimeoutError:
+            logger.info("Device %s announces readable memory but does not permit readouts", d)
 
         # Creating the entities while the bus is locked so they can process
         # their initial messages right away
@@ -100,17 +105,15 @@ async def main(loop, serial_dev, platforms):
             e = FUD14Entity(d, unique_id_prefix)
             light_entities.append(e)
             entities_for_status[d.address] = e
-            logger.debug("Created FUD14 entity for %s", d)
+            logger.info("Created FUD14 entity for %s", d)
         elif isinstance(d, device.FSR14):
             for subchannel in range(d.size):
                 e = FSR14Entity(d, subchannel, unique_id_prefix)
                 switch_entities.append(e)
                 entities_for_status[d.address + subchannel] = e
-            logger.debug("Created FSR14 entity(s) for %s", d)
+            logger.info("Created FSR14 entity(s) for %s", d)
         else:
             continue
-
-        logging.info("Found entity %s, asking for initial state", e)
 
     logger.debug("Forcing status messages from %d known channels" % len(entities_for_status))
     for addr, entity in entities_for_status.items():
