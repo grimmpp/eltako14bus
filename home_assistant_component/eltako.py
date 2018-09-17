@@ -53,148 +53,152 @@ async def async_setup(hass, config):
                 config
                 )
 
-    asyncio.ensure_future(wrapped_main(hass, loop, config, platforms), loop=loop)
+    ctrl = EltakoBusController(hass, loop, config, platforms)
 
     return True
 
-async def wrapped_main(*args):
-    try:
-        await main(*args)
-    except Exception as e:
-        logger.exception(e)
-        # FIXME should I just restart with back-off?
+class EltakoBusController:
+    def __init__(self, hass, loop, config, platforms):
+        self._task = asyncio.ensure_future(self.wrapped_main(hass, loop, config, platforms), loop=loop)
 
-async def main(hass, loop, config, platforms):
-    logger.debug("Waiting for platforms to register")
-    for p in platforms:
-        platforms[p] = await platforms[p]
-    logger.debug("Platforms registered")
-
-
-    serial_dev = config['eltako'].get(CONF_DEVICE)
-    teachin_preconfigured = config['eltako'].get('teach-in', {})
-
-    teachins = TeachInCollection(hass, teachin_preconfigured, platforms['sensor'])
-
-
-    bus = RS485SerialInterface(serial_dev, log=logger.getChild('serial'))
-    unique_id_prefix = serial_dev.replace('/', '-').lstrip('-')
-
-    bus_ready = asyncio.Future()
-    asyncio.ensure_future(bus.run(loop, conn_made=bus_ready), loop=loop)
-    await bus_ready
-
-    logger.info("Serial device detected and ready")
-
-    logger.debug("Locking bus")
-    bus_status = await locking.lock_bus(bus)
-
-    logger.debug("Bus locked (%s), enumerating devices", bus_status)
-
-    entities_for_status = {}
-
-    for i in range(1, 256):
+    async def wrapped_main(self, *args):
         try:
-            d = await device.create_busobject(bus, i)
-        except TimeoutError:
-            continue
+            await self.main(*args)
+        except Exception as e:
+            logger.exception(e)
+            # FIXME should I just restart with back-off?
 
-        logger.debug("Found device %s", d)
+    async def main(self, hass, loop, config, platforms):
+        logger.debug("Waiting for platforms to register")
+        for p in platforms:
+            platforms[p] = await platforms[p]
+        logger.debug("Platforms registered")
 
-        # reading ahead so all the configuration data needed during
-        # find_direct_command_address and similar are available at once
-        try:
-            await d.read_mem()
-        except TimeoutError:
-            logger.info("Device %s announces readable memory but does not permit readouts", d)
 
-        # Creating the entities while the bus is locked so they can process
-        # their initial messages right away
+        serial_dev = config['eltako'].get(CONF_DEVICE)
+        teachin_preconfigured = config['eltako'].get('teach-in', {})
 
-        if isinstance(d, device.FUD14):
-            e = FUD14Entity(d, unique_id_prefix)
-            entities_for_status[d.address] = e
-            logger.info("Created FUD14 entity for %s", d)
-            platforms['light']([e])
-        elif isinstance(d, device.FSR14):
-            for subchannel in range(d.size):
-                e = FSR14Entity(d, subchannel, unique_id_prefix)
-                platforms['switch']([e])
-                entities_for_status[d.address + subchannel] = e
-            logger.info("Created FSR14 entity(s) for %s", d)
-        else:
-            continue
+        teachins = TeachInCollection(hass, teachin_preconfigured, platforms['sensor'])
 
-    logger.debug("Forcing status messages from %d known channels" % len(entities_for_status))
-    for addr, entity in entities_for_status.items():
-        forced_answer = await bus.exchange(message.EltakoPollForced(addr))
-        logger.debug("Answer to forced poll on %d is %s", addr, forced_answer)
-        # FIXME who's responsible for making this into an RPS/4BS message?
-        # This is implicit prettify use here.
-        await entity.process_message(forced_answer, notify=False)
 
-    logger.debug("Unlocking bus")
-    bus_status = await locking.unlock_bus(bus)
-    logger.debug("Bus unlocked (%s)", bus_status)
+        bus = RS485SerialInterface(serial_dev, log=logger.getChild('serial'))
+        unique_id_prefix = serial_dev.replace('/', '-').lstrip('-')
 
-    logger.debug("Injecting entities for found devices")
+        bus_ready = asyncio.Future()
+        bus_loop = asyncio.ensure_future(bus.run(loop, conn_made=bus_ready), loop=loop)
+        await bus_ready
 
-    logger.info("Bus ready. Full operational readiness may take a few seconds while the FAM scans the bus.")
+        logger.info("Serial device detected and ready")
 
-    while True:
-        msg = await bus.received.get()
+        logger.debug("Locking bus")
+        bus_status = await locking.lock_bus(bus)
 
-        address = None
-        try:
-            msg = message.EltakoWrappedRPS.parse(msg.serialize())
-        except ParseError:
-            pass
-        else:
-            address = msg.address[-1]
-        try:
-            msg = message.EltakoWrapped4BS.parse(msg.serialize())
-        except ParseError:
-            pass
-        else:
-            address = msg.address[-1]
+        logger.debug("Bus locked (%s), enumerating devices", bus_status)
 
-        if address in entities_for_status:
+        entities_for_status = {}
+
+        for i in range(1, 256):
             try:
-                await entities_for_status[address].process_message(msg)
-            except UnrecognizedUpdate as e:
-                logger.warn("Update to %s could not be processed: %s", address, msg)
-                logger.exception(e)
-            continue
+                d = await device.create_busobject(bus, i)
+            except TimeoutError:
+                continue
 
-        # so it's not an eltakowrapped message... maybe regular 4bs/rps?
-        try:
-            msg = message.RPSMessage.parse(msg.serialize())
-        except ParseError as e:
-            pass
-        else:
-            teachins.feed_rps(msg)
-            continue
+            logger.debug("Found device %s", d)
 
-        try:
-            msg = message.Regular4BSMessage.parse(msg.serialize())
-        except ParseError:
-            pass
-        else:
-            teachins.dispatch_4bs(msg)
-            continue
+            # reading ahead so all the configuration data needed during
+            # find_direct_command_address and similar are available at once
+            try:
+                await d.read_mem()
+            except TimeoutError:
+                logger.info("Device %s announces readable memory but does not permit readouts", d)
 
-        try:
-            msg = message.TeachIn4BSMessage2.parse(msg.serialize())
-        except ParseError:
-            pass
-        else:
-            teachins.feed_4bs(msg)
-            continue
+            # Creating the entities while the bus is locked so they can process
+            # their initial messages right away
 
-        # It's for debug only, prettify is OK here
-        msg = message.prettify(msg)
-        if type(msg) not in (message.EltakoPoll, message.EltakoPollForced):
-            logger.debug("Discarding message %s", message.prettify(msg))
+            if isinstance(d, device.FUD14):
+                e = FUD14Entity(d, unique_id_prefix)
+                entities_for_status[d.address] = e
+                logger.info("Created FUD14 entity for %s", d)
+                platforms['light']([e])
+            elif isinstance(d, device.FSR14):
+                for subchannel in range(d.size):
+                    e = FSR14Entity(d, subchannel, unique_id_prefix)
+                    platforms['switch']([e])
+                    entities_for_status[d.address + subchannel] = e
+                logger.info("Created FSR14 entity(s) for %s", d)
+            else:
+                continue
+
+        logger.debug("Forcing status messages from %d known channels" % len(entities_for_status))
+        for addr, entity in entities_for_status.items():
+            forced_answer = await bus.exchange(message.EltakoPollForced(addr))
+            logger.debug("Answer to forced poll on %d is %s", addr, forced_answer)
+            # FIXME who's responsible for making this into an RPS/4BS message?
+            # This is implicit prettify use here.
+            await entity.process_message(forced_answer, notify=False)
+
+        logger.debug("Unlocking bus")
+        bus_status = await locking.unlock_bus(bus)
+        logger.debug("Bus unlocked (%s)", bus_status)
+
+        logger.debug("Injecting entities for found devices")
+
+        logger.info("Bus ready. Full operational readiness may take a few seconds while the FAM scans the bus.")
+
+        while True:
+            msg = await bus.received.get()
+
+            address = None
+            try:
+                msg = message.EltakoWrappedRPS.parse(msg.serialize())
+            except ParseError:
+                pass
+            else:
+                address = msg.address[-1]
+            try:
+                msg = message.EltakoWrapped4BS.parse(msg.serialize())
+            except ParseError:
+                pass
+            else:
+                address = msg.address[-1]
+
+            if address in entities_for_status:
+                try:
+                    await entities_for_status[address].process_message(msg)
+                except UnrecognizedUpdate as e:
+                    logger.warn("Update to %s could not be processed: %s", address, msg)
+                    logger.exception(e)
+                continue
+
+            # so it's not an eltakowrapped message... maybe regular 4bs/rps?
+            try:
+                msg = message.RPSMessage.parse(msg.serialize())
+            except ParseError as e:
+                pass
+            else:
+                teachins.feed_rps(msg)
+                continue
+
+            try:
+                msg = message.Regular4BSMessage.parse(msg.serialize())
+            except ParseError:
+                pass
+            else:
+                teachins.dispatch_4bs(msg)
+                continue
+
+            try:
+                msg = message.TeachIn4BSMessage2.parse(msg.serialize())
+            except ParseError:
+                pass
+            else:
+                teachins.feed_4bs(msg)
+                continue
+
+            # It's for debug only, prettify is OK here
+            msg = message.prettify(msg)
+            if type(msg) not in (message.EltakoPoll, message.EltakoPollForced):
+                logger.debug("Discarding message %s", message.prettify(msg))
 
 class TeachInCollection:
     def __init__(self, hass, preconfigured, add_entities_callback):
