@@ -14,3 +14,4 @@ from .serial import *
 from .coap import *
 from .device import *
 from . import locking
+from . import eep
