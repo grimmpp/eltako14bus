@@ -13,7 +13,7 @@ class RS485SerialInterface(BusInterface):
     Note that this relies on the UART to be configured to drive the bus only
     when data is being sent, as for example done by the Digitus adapters.
     """
-    def __init__(self, filename, suppress_echo=None):
+    def __init__(self, filename, suppress_echo=None, log=None):
         self._filename = filename
 
         self.received = asyncio.Queue()
@@ -22,11 +22,14 @@ class RS485SerialInterface(BusInterface):
         self.suppress_echo = suppress_echo
         self._suppress = []
 
+        self.log = log or logging.getLogger('eltakobus.serial')
+
     async def run(self, loop, *, conn_made=None):
         self._loop = loop
         reader, self._writer = await serial_asyncio.open_serial_connection(url=self._filename, baudrate=57600, loop=loop)
 
         if self.suppress_echo is None:
+            self.log.debug("Performing echo detection")
             # any character sequence as long as it won't look like the preamble and confuse other bus participants
             for i in range(5):
                 # flush the input; FIXME tapping into StreamReader internals means I should implement a protocol
@@ -37,9 +40,11 @@ class RS485SerialInterface(BusInterface):
                     read = await asyncio.wait_for(reader.readexactly(len(echotest)), timeout=0.1, loop=self._loop)
                 except asyncio.TimeoutError:
                     self.suppress_echo = False
+                    self.log.debug("No echo detected on the line")
                     break
                 if read == echotest:
                     self.suppress_echo = True
+                    self.log.debug("Echo detected on the line, enabling suppression")
                     break
                 else:
                     await asyncio.sleep(0.5)
@@ -64,8 +69,21 @@ class RS485SerialInterface(BusInterface):
                     # purge entries older than 3s, they might have had
                     # collisions and thus did not report correctly
                     while self._suppress and self._suppress[0][0] < time.time() - 3:
+                        self.log.info("Dropping echo-suppressed message because it timed out without being echoed")
                         self._suppress.pop(0)
-                    if self._suppress and buffered[:14] == self._suppress[0][1]:
+                    found_i = None
+                    for i, (t, suppressed) in enumerate(self._suppress):
+                        if buffered[:14] == suppressed:
+                            found_i = i
+                            break
+                    if found_i is not None:
+                        if found_i > 0:
+                            self.log.info("Dropping %d echo-suppressed message(s) because a later sent message was already received" % found_i)
+                        # block is not part of the if-condition in the loop
+                        # because it would invalidate the iterator (that'd be
+                        # OK as we're breaking) but also needs to continue on
+                        # the outer loop
+                        del self._suppress[:found_i + 1]
                         buffered = buffered[14:]
                         continue
 
