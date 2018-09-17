@@ -145,7 +145,9 @@ class TeachIn4BSMessage2(_4BSMessage):
         # documentation where it gets no mention either
 
         any_teach_in = super().parse(data)
-        if any_teach_in.data[3] != 0x80:
+        if any_teach_in.data[3] & 0xf8 != 0x80:
+            # The remaining 3 bites are not described in EEP 2.6.7 (gray in
+            # diagram), Eltako devices send 0x7 there
             raise ParseError("This is not a plain Variation 2 teach-in telegram")
         return any_teach_in
 
