@@ -7,15 +7,18 @@ from homeassistant.helpers import discovery
 
 from homeassistant.components.light import Light, SUPPORT_BRIGHTNESS, ATTR_BRIGHTNESS
 from homeassistant.components.switch import SwitchDevice
+from homeassistant.helpers.entity import Entity
 
 # until eltakobus is published, pull in its dependencies:
 REQUIREMENTS = ['pyserial_asyncio', 'pyserial >= 3.4']
 import sys
 sys.path.append(__file__[:__file__.rfind('/')])
 from eltakobus.serial import RS485SerialInterface
+from eltakobus.util import b2a
 from eltakobus import device
 from eltakobus import message
 from eltakobus import locking
+from eltakobus.eep import EEP
 from eltakobus.error import TimeoutError, ParseError, UnrecognizedUpdate
 
 DOMAIN = 'eltako'
@@ -38,14 +41,9 @@ platforms = {}
 async def async_setup(hass, config):
     loop = asyncio.get_event_loop()
 
-    serial_dev = config['eltako'].get(CONF_DEVICE)
-
     global platforms
     assert platforms == {}
-    platforms = {k: asyncio.Future() for k in ('light', 'switch')}
-
-    asyncio.ensure_future(wrapped_main(loop, serial_dev, platforms), loop=loop)
-
+    platforms = {k: asyncio.Future() for k in ('light', 'switch', 'sensor')}
     for platform, f in platforms.items():
         await discovery.async_load_platform(
                 hass,
@@ -54,6 +52,8 @@ async def async_setup(hass, config):
                 {},
                 config
                 )
+
+    asyncio.ensure_future(wrapped_main(hass, loop, config, platforms), loop=loop)
 
     return True
 
@@ -64,8 +64,20 @@ async def wrapped_main(*args):
         logger.exception(e)
         # FIXME should I just restart with back-off?
 
-async def main(loop, serial_dev, platforms):
-    bus = RS485SerialInterface(serial_dev)
+async def main(hass, loop, config, platforms):
+    logger.debug("Waiting for platforms to register")
+    for p in platforms:
+        platforms[p] = await platforms[p]
+    logger.debug("Platforms registered")
+
+
+    serial_dev = config['eltako'].get(CONF_DEVICE)
+    teachin_preconfigured = config['eltako'].get('teach-in', {})
+
+    teachins = TeachInCollection(hass, teachin_preconfigured, platforms['sensor'])
+
+
+    bus = RS485SerialInterface(serial_dev, log=logger.getChild('serial'))
     unique_id_prefix = serial_dev.replace('/', '-').lstrip('-')
 
     bus_ready = asyncio.Future()
@@ -79,8 +91,6 @@ async def main(loop, serial_dev, platforms):
 
     logger.debug("Bus locked (%s), enumerating devices", bus_status)
 
-    light_entities = []
-    switch_entities = []
     entities_for_status = {}
 
     for i in range(1, 256):
@@ -103,13 +113,13 @@ async def main(loop, serial_dev, platforms):
 
         if isinstance(d, device.FUD14):
             e = FUD14Entity(d, unique_id_prefix)
-            light_entities.append(e)
             entities_for_status[d.address] = e
             logger.info("Created FUD14 entity for %s", d)
+            platforms['light']([e])
         elif isinstance(d, device.FSR14):
             for subchannel in range(d.size):
                 e = FSR14Entity(d, subchannel, unique_id_prefix)
-                switch_entities.append(e)
+                platforms['switch']([e])
                 entities_for_status[d.address + subchannel] = e
             logger.info("Created FSR14 entity(s) for %s", d)
         else:
@@ -118,6 +128,7 @@ async def main(loop, serial_dev, platforms):
     logger.debug("Forcing status messages from %d known channels" % len(entities_for_status))
     for addr, entity in entities_for_status.items():
         forced_answer = await bus.exchange(message.EltakoPollForced(addr))
+        logger.debug("Answer to forced poll on %d is %s", addr, forced_answer)
         # FIXME who's responsible for making this into an RPS/4BS message?
         # This is implicit prettify use here.
         await entity.process_message(forced_answer, notify=False)
@@ -127,12 +138,6 @@ async def main(loop, serial_dev, platforms):
     logger.debug("Bus unlocked (%s)", bus_status)
 
     logger.debug("Injecting entities for found devices")
-
-    add_light_entities = await platforms['light']
-    add_light_entities(light_entities)
-    add_switch_entities = await platforms['switch']
-    add_switch_entities(switch_entities)
-    del light_entities, switch_entities
 
     logger.info("Bus ready. Full operational readiness may take a few seconds while the FAM scans the bus.")
 
@@ -159,11 +164,140 @@ async def main(loop, serial_dev, platforms):
             except UnrecognizedUpdate as e:
                 logger.warn("Update to %s could not be processed: %s", address, msg)
                 logger.exception(e)
+            continue
+
+        # so it's not an eltakowrapped message... maybe regular 4bs/rps?
+        try:
+            msg = message.RPSMessage.parse(msg.serialize())
+        except ParseError as e:
+            pass
         else:
-            # It's for debug only, prettify is OK here
-            msg = message.prettify(msg)
-            if type(msg) not in (message.EltakoPoll, message.EltakoPollForced):
-                logger.debug("Discarding message %s", message.prettify(msg))
+            teachins.feed_rps(msg)
+            continue
+
+        try:
+            msg = message.Regular4BSMessage.parse(msg.serialize())
+        except ParseError:
+            pass
+        else:
+            teachins.dispatch_4bs(msg)
+            continue
+
+        try:
+            msg = message.TeachIn4BSMessage2.parse(msg.serialize())
+        except ParseError:
+            pass
+        else:
+            teachins.feed_4bs(msg)
+            continue
+
+        # It's for debug only, prettify is OK here
+        msg = message.prettify(msg)
+        if type(msg) not in (message.EltakoPoll, message.EltakoPollForced):
+            logger.debug("Discarding message %s", message.prettify(msg))
+
+class TeachInCollection:
+    def __init__(self, hass, preconfigured, add_entities_callback):
+        self.hass = hass
+        self._seen_rps = set()
+        self._seen_4bs = {}
+        self._messages = [] # list of (address, profile) pairs
+        self._add_entities_callback = add_entities_callback
+        self._entities = {} # address -> list of entities
+
+        for k, v in preconfigured.items():
+            try:
+                address = bytes(int(x, 16) for x in k.split('-'))
+                profile = tuple(int(x, 16) for x in v.split('-'))
+                if len(profile) != 3 or len(address) != 4:
+                    raise ValueError
+            except ValueError:
+                logger.error('Invalid configuration entry %s: %s -- expected format is "01-23-45-67" for addresses and "a5-02-16" for values.', k, v)
+                continue
+
+            if profile[0] == 0xf6:
+                self._seen_rps.append(address)
+                # not creating entities; right now they're only logged
+            elif profile[0] == 0xa5:
+                self.create_entity(address, profile)
+            else:
+                logger.error('Invalid profile %s: Only RPS and 4BS (f6-... and a5-...) supported', "-".join("%02x" % x for x in profile))
+
+    def announce(self, address, profile):
+        self._messages.append((address, profile))
+        self.hass.components.persistent_notification.async_create(
+                """To make the resulting sensors persistent and remove this message, append the following lines in your <code>configuration.yaml</code> file:
+                <pre>eltako:<br />  teach-in:<br />""" +
+                "<br />".join('    "%02x-%02x-%02x-%02x": "%02x-%02x-%02x"' % (*m[0], *m[1]) for m in self._messages) +
+                """</pre>""",
+                title="New EnOcean devices detected",
+                notification_id="eltako-teach-in"
+                )
+
+    def feed_4bs(self, msg):
+        if msg.address not in self._seen_4bs:
+            self.announce(msg.address, msg.profile)
+            self.create_entity(msg.address, msg.profile)
+
+    def feed_rps(self, msg):
+        if msg.address not in self._seen_rps:
+            self._seen_rps.add(msg.address)
+            self.announce(msg.address, (0xf6, 0x02, 0x01))
+            # not creating entities; right now they're only logged
+
+    def create_entity(self, address, profile):
+        """Create and register appropriate entity(ies) based on an address and
+        profile obtained from a teach-in telegram or configuration"""
+
+        try:
+            eep = EEP.find(profile)
+        except KeyError:
+            logger.error("No EEP support available for %s, ignoring values from that sensor", "-".join("%02x" % x for x in profile))
+            self._seen_4bs[address] = None # don't report again
+            return
+
+        self._seen_4bs[address] = eep
+
+        field_to_unit = {
+                'temperature': '°C',
+                'humitity': '%',
+                }
+        for field in eep.fields:
+            entity_class = type("CustomSensor", (Entity,), {
+                "poll": False,
+                "name": "%s Sensor %s" % (field.capitalize(), b2a(address)),
+                "entity_id": "sensor.enocean.%s-%s" % (b2a(address).replace(' ', ''), field),
+                "unique_id": "sensor.enocean.%s-%s" % (b2a(address).replace(' ', ''), field),
+                "state": None,
+                "assumed_state": True,
+                "unit_of_measurement": field_to_unit.get(field, ''),
+                "state_attributes": {'enocean-address': b2a(address), 'enocean-profile': b2a(bytes(profile)).replace(' ', '-')},
+                })
+            instance = entity_class()
+            self._entities.setdefault(address, {})[field] = instance
+            self._add_entities_callback([instance])
+
+    def dispatch_4bs(self, msg):
+        try:
+            profile = self._seen_4bs[msg.address]
+        except KeyError:
+            logger.warning("4BS from unknown source %s, discarding", b2a(msg.address))
+            return
+
+        decoded = profile.decode(msg.data)
+
+        # Apply some rounding while home assistant does not know of precisison
+        # or sane rounding
+        field_to_round = {
+                'temperature': lambda v: round(v, 1),
+                'humidity': lambda v: round(v, 1),
+                }
+
+        for k, v in decoded.items():
+            entity = self._entities[msg.address][k]
+            entity.assumed_state = False
+            entity.state = field_to_round.get(k, lambda x:x)(v)
+            entity.async_schedule_update_ha_state(False)
 
 class EltakoEntity:
     poll = False
@@ -178,7 +312,7 @@ class FUD14Entity(EltakoEntity, Light):
         self._name = "FUD14 [%s]" % busobject.address
         self._state = None
 
-        # would need to do that outside, and even then 
+        # would need to do that outside, and even then
         # self._writable = await self.busobject.find_direct_command_address() is not None
 
     @property
@@ -215,7 +349,6 @@ class FUD14Entity(EltakoEntity, Light):
             logger.debug("Read FUD14 brightness as %s", self._state)
             if notify:
                 self.async_schedule_update_ha_state(False)
-
     async def async_turn_on(self, **kwargs):
         if ATTR_BRIGHTNESS in kwargs:
             brightness = kwargs[ATTR_BRIGHTNESS]
