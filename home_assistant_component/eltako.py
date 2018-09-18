@@ -148,6 +148,7 @@ class EltakoBusController:
                 logger.info("Created dimmer entity for %s", d)
                 platforms['light']([e])
             elif isinstance(d, device.FSR14):
+                await d.ensure_direct_command_addresses()
                 for subchannel in range(d.size):
                     e = FSR14Entity(d, subchannel, unique_id_prefix)
                     platforms['switch']([e])

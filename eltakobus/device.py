@@ -7,7 +7,7 @@ import yaml
 from .util import b2a
 from .message import *
 from .error import UnrecognizedUpdate
-from .eep import A5_38_08, A5_12_01
+from .eep import A5_38_08, A5_12_01, F6_02_01_left, F6_02_01_right
 
 class BusObject:
     def __init__(self, response, *, bus=None):
@@ -207,9 +207,15 @@ class FUD14(DimmerStyle):
 
 
 class FSR14(BusObject):
+    _explicitly_configured_command_address = {}
+
     async def find_direct_command_address(self, channel):
         """Find RPS telegram details (sender, (db0 to turn off, db0 to turn
         on)) to send to switch the given channel"""
+
+        if channel in self._explicitly_configured_command_address:
+            return self._explicitly_configured_command_address[channel]
+
         target_bitset = 1 << channel
         for memory_id in range(12, 128):
             line = await self.read_mem_line(memory_id)
@@ -231,6 +237,37 @@ class FSR14(BusObject):
             if db0 is not None:
                 return sender, db0
         return None, None
+
+    async def ensure_direct_command_addresses(self):
+        # Choosing (0, 0, 0, address) because that's where they send from --
+        # but in EltakoWrapped messages. So this address should, for other
+        # purposes, be free.
+        for subchannel in range(self.size):
+            source_address = bytes((0, 0, 0, self.address + subchannel))
+            await self.ensure_programmed(subchannel, source_address, F6_02_01_left)
+            self._explicitly_configured_command_address[subchannel] = (source_address, (0x30, 0x10))
+
+    async def ensure_programmed(self, subchannel, source, profile):
+        if profile is F6_02_01_left:
+            # programmed as function 3, key is 5 for left
+            expected_line = source + bytes((5, 3, 1 << subchannel, 0))
+        elif profile is F6_02_01_right:
+            # programmed as function 3, key is 6 for right
+            expected_line = source + bytes((6, 3, 1 << subchannel, 0))
+        else:
+            raise ValueError("It is unknown how this profile could be programmed in.")
+
+        first_empty = None
+        for memory_id in range(12, 128):
+            line = await self.read_mem_line(memory_id)
+            if line == expected_line:
+                return
+            if not any(line) and first_empty is None:
+                first_empty = memory_id
+        if first_empty is None:
+            raise RuntimeError("No free memory to configure this function")
+        self.bus.log.info("%s: Writing programming for profile %s in line %d", self, profile, first_empty)
+        await self.write_mem_line(first_empty, expected_line)
 
     async def set_state(self, channel, state: bool):
         command = await self.find_direct_command_address(channel)

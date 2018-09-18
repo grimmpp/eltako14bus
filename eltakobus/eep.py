@@ -119,3 +119,15 @@ class A5_13_01(EEP):
                 }
         else:
             return {}
+
+class PseudoEEP:
+    """Base class for some token classes where the behavior of a programmed
+    device (even single-channel) is not sufficiently described by an EEP, but
+    needs additional information (eg. whether to respond to the left or the
+    right half of a double rocker switch."""
+class F6_02_01_left(PseudoEEP):
+    """2-part Rocker switch, Application Style 1 (European, bottom switches
+    on), utilizing left part"""
+class F6_02_01_right(PseudoEEP):
+    """2-part Rocker switch, Application Style 1 (European, bottom switches
+    on), utilizing right part"""
