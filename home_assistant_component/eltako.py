@@ -434,7 +434,7 @@ class FSR14Entity(EltakoEntity, SwitchDevice):
         self.busobject = busobject
         self.subchannel = subchannel
         self._unique_id = "%s-%s-%s" % (unique_id_prefix, busobject.address, subchannel)
-        self._name = "FSR14 [%s/%s]" % (busobject.address, subchannel)
+        self._name = "%s [%s/%s]" % (type(busobject).__name__, busobject.address, subchannel)
         self._state = None
 
     @property

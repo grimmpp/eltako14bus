@@ -311,7 +311,7 @@ class FSR14_4x(FSR14):
     discovery_name = bytes((0x04, 0x01))
     size = 4
 
-class F4SR14_LED(BusObject):
+class F4SR14_LED(FSR14):
     discovery_name = bytes((0x04, 0x09))
     size = 4
 

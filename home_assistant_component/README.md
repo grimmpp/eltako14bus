@@ -20,6 +20,7 @@ Recognized on the bus:
 
 * FUD14 and FSG14 1-10V (as dimmable lights)
 * FSR14 with 1, 2, or 4 slots (as switches)
+* FSR14-LED (yet untested)
 * FWZ14-65A
 
 Recognized over the air:
@@ -37,8 +38,6 @@ Recognized over the air:
   Those devices participate on the bus, but report their status only using telegrams whose ID depends on the switch state which can be read from the bus. For the purpose of reading it, the FGW14MS on the bus is a no-op entity, and has to be taught in like any other radio object.
 
 TBD:
-
-* FSR14-LED (probably FSR14-ish)
 
 * FSB14 (needs actual hardware)
 * FDG14 (needs actual hardware, works different from FUD)
