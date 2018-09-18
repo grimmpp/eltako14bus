@@ -318,6 +318,11 @@ class TeachInCollection:
         field_to_unit = {
                 'temperature': '°C',
                 'humitity': '%',
+                'wind speed': 'm/s',
+                'illuminance (dawn)': 'lux',
+                'illuminance (west)': 'lux',
+                'illuminance (central)': 'lux',
+                'illuminance (east)': 'lux',
                 }
         for field in eep.fields:
             entity_class = type("CustomSensor", (Entity,), {
