@@ -7,7 +7,7 @@ import yaml
 from .util import b2a
 from .message import *
 from .error import UnrecognizedUpdate
-from .eep import A5_38_08
+from .eep import A5_38_08, A5_12_01
 
 class BusObject:
     def __init__(self, response, *, bus=None):
@@ -354,6 +354,26 @@ class FWZ14_65A(BusObject):
                 1: MemoryFileNibbleExplanationComment(".. .. .. .. ..  SUM kWh", "accumulated counter value as sent in DT=0 DIV=0 telegram"),
                 5: MemoryFileNibbleExplanationComment("S0 S1 S2 S3 .. .. .. ..", "Serial number as sent in DT=1 DIV=3 TI=8 messages (once as with DB3..1 = S1 S0 00, once as S3 S2 01)")
                 }
+
+    async def read_serial(self):
+        return b2a((await self.read_mem_line(5))[:4])
+
+    def interpret_status_update(self, msg):
+        if not isinstance(msg, EltakoWrapped4BS):
+            try:
+                msg = EltakoWrapped4BS.parse(msg.serialize())
+            except ParseError:
+                raise UnrecognizedUpdate("Not a 4BS update: %s" % msg)
+
+        if msg.address != bytes((0, 0, 0, self.address)):
+            raise UnrecognizedUpdate("4BS not originating from this device")
+
+        if msg.data[3] == 0x8f:
+            # Device is sending its serial number, which is better obtained
+            # from memory
+            return {}
+
+        return A5_12_01.decode(msg.data)
 
 class FSG14_1_10V(DimmerStyle):
     discovery_name = bytes((0x04, 0x07))

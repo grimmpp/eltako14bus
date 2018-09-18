@@ -20,6 +20,7 @@ Recognized on the bus:
 
 * FUD14 and FSG14 1-10V (as dimmable lights)
 * FSR14 with 1, 2, or 4 slots (as switches)
+* FWZ14-65A
 
 Recognized over the air:
 
@@ -34,7 +35,6 @@ Recognized over the air:
 TBD:
 
 * FSR14-LED (probably FSR14-ish)
-* FWZ14
 * FGW14MS
 
 * FSB14 (needs actual hardware)

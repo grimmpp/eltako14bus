@@ -65,6 +65,22 @@ class TempHumSensor(EEP):
 class A5_04_01(TempHumSensor): min = 0; max = 40
 class A5_04_02(TempHumSensor): min = -20; max = 60
 
+class MeterReading(EEP):
+    """Base for the A5-12 subtypes"""
+    @classmethod
+    def decode(cls, data):
+        value = (data[0] << 16) + (data[1] << 8) + data[2]
+        channel = data[3] >> 4
+        cumulative = not (data[3] & 0x04)
+        divisor = 10 ** (data[3] & 0x03)
+
+        return {(channel, cls.cum if cumulative else cls.cur): value / divisor}
+
+class A5_12_00(MeterReading): cum = 'counter'; cur = 'frequency'
+class A5_12_01(MeterReading): cum = 'energy'; cur = 'power'
+class A5_12_02(MeterReading): cum = 'volume'; cur = 'flow' # for gas
+class A5_12_03(MeterReading): cum = 'volume'; cur = 'flow' # for water
+
 class A5_38_08(EEP):
     """So far, only a sentinel -- later, eltakobus.device should make use of
     this for en- and decoding"""

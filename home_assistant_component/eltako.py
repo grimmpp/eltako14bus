@@ -144,31 +144,55 @@ class EltakoBusController:
             if isinstance(d, device.DimmerStyle):
                 await d.ensure_direct_command_address()
                 e = DimmerEntity(type(d).__name__, d, unique_id_prefix)
-                entities_for_status[d.address] = e
+                entities_for_status[d.address] = [e]
                 logger.info("Created dimmer entity for %s", d)
                 platforms['light']([e])
             elif isinstance(d, device.FSR14):
                 for subchannel in range(d.size):
                     e = FSR14Entity(d, subchannel, unique_id_prefix)
                     platforms['switch']([e])
-                    entities_for_status[d.address + subchannel] = e
+                    entities_for_status[d.address + subchannel] = [e]
                 logger.info("Created FSR14 entity(s) for %s", d)
+            elif isinstance(d, device.FWZ14_65A):
+                serial = await d.read_serial()
+                additional_state = {
+                        'serial-number': serial,
+                        }
+                prefix = "%s.%s.%s" % (unique_id_prefix, d.address, serial.replace(' ', '-'))
+                e_cum = BusSensorEntity(
+                        'FWZ14 65A [%s] cummulative' % d.address,
+                        prefix + '.cum',
+                        'kWh',
+                        (0, 'energy'),
+                        additional_state,
+                        d,
+                        )
+                e_cur = BusSensorEntity(
+                        'FWZ14 65A [%s] current' % d.address,
+                        prefix + '.cur',
+                        'W',
+                        (0, 'power'),
+                        additional_state,
+                        d,
+                        )
+                platforms['sensor']([e_cum, e_cur])
+                entities_for_status[d.address] = [e_cum, e_cur]
+                logger.info("Created FWZ14 entities")
             else:
                 continue
 
         logger.debug("Forcing status messages from %d known channels" % len(entities_for_status))
-        for addr, entity in entities_for_status.items():
-            forced_answer = await bus.exchange(message.EltakoPollForced(addr))
-            logger.debug("Answer to forced poll on %d is %s", addr, forced_answer)
-            # FIXME who's responsible for making this into an RPS/4BS message?
-            # This is implicit prettify use here.
-            await entity.process_message(forced_answer, notify=False)
+        for addr, entities in entities_for_status.items():
+            for entity in entities:
+                forced_answer = await bus.exchange(message.EltakoPollForced(addr))
+                logger.debug("Answer to forced poll on %d is %s", addr, forced_answer)
+                # FIXME who's responsible for making this into an RPS/4BS message?
+                # This is implicit prettify use here.
+                await entity.process_message(forced_answer, notify=False)
 
         logger.debug("Unlocking bus")
         bus_status = await locking.unlock_bus(bus)
         logger.debug("Bus unlocked (%s)", bus_status)
-
-        logger.debug("Injecting entities for found devices")
 
         logger.info("Bus ready. Full operational readiness may take a few seconds while the FAM scans the bus.")
 
@@ -190,11 +214,12 @@ class EltakoBusController:
                 address = msg.address[-1]
 
             if address in entities_for_status:
-                try:
-                    await entities_for_status[address].process_message(msg)
-                except UnrecognizedUpdate as e:
-                    logger.warn("Update to %s could not be processed: %s", address, msg)
-                    logger.exception(e)
+                for entity in entities_for_status[address]:
+                    try:
+                        await entity.process_message(msg)
+                    except UnrecognizedUpdate as e:
+                        logger.warn("Update to %s could not be processed: %s", entity, msg)
+                        logger.exception(e)
                 continue
 
             # so it's not an eltakowrapped message... maybe regular 4bs/rps?
@@ -334,6 +359,7 @@ class EltakoEntity:
     poll = False
 
     unique_id = property(lambda self: self._unique_id)
+    entity_id = None # how should that be shaped?
     name = property(lambda self: self._name)
 
 class DimmerEntity(EltakoEntity, Light):
@@ -367,7 +393,7 @@ class DimmerEntity(EltakoEntity, Light):
 
     @property
     def state_attributes(self):
-        base = super().state_attributes
+        base = super().state_attributes or {}
         return {**base,
                 'eltako-bus-address': self.busobject.address,
                 'eltako-device-version': ".".join(map(str, self.busobject.version)),
@@ -410,7 +436,7 @@ class FSR14Entity(EltakoEntity, SwitchDevice):
 
     @property
     def state_attributes(self):
-        base = super().state_attributes
+        base = super().state_attributes or {}
         return {**base,
                 'eltako-bus-address': self.busobject.address,
                 'eltako-bus-address-subchannel': self.subchannel,
@@ -429,3 +455,37 @@ class FSR14Entity(EltakoEntity, SwitchDevice):
 
     async def async_turn_off(self, **kwargs):
         await self.busobject.set_state(self.subchannel, False)
+
+class BusSensorEntity(EltakoEntity, Entity):
+    # no I don't want to implement a property right now; the first two also
+    # serve as default values
+    state = None
+    assumed_state = True
+    unit_of_measurement = None
+
+    def __init__(self, name, unique_id, unit, update_to_state_key, additional_state, busobject):
+        self._unique_id = unique_id
+        self._name = name
+        self.unit_of_measurement = unit
+        self.update_to_state_key = update_to_state_key
+        self.additional_state = additional_state
+        self.busobject = busobject
+
+    @property
+    def state_attributes(self):
+        base = super().state_attributes or {}
+        return {**base,
+                **self.additional_state,
+                'eltako-bus-address': self.busobject.address,
+                'eltako-device-version': ".".join(map(str, self.busobject.version)),
+                }
+
+    async def process_message(self, msg, notify=True):
+        processed = self.busobject.interpret_status_update(msg)
+        if not processed:
+            return
+        energy = processed.pop(self.update_to_state_key, None)
+        if energy is not None:
+            self.assumed_state = False
+            self.state = energy
+            self.async_schedule_update_ha_state(False)
