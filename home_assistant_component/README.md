@@ -32,10 +32,13 @@ Recognized over the air:
 
   Note that devices like the FTS14EM appear just as such devices because they do not fully participate on the bus, and send regular radio telegrams from their own address space.
 
+* FGW14MS
+
+  Those devices participate on the bus, but report their status only using telegrams whose ID depends on the switch state which can be read from the bus. For the purpose of reading it, the FGW14MS on the bus is a no-op entity, and has to be taught in like any other radio object.
+
 TBD:
 
 * FSR14-LED (probably FSR14-ish)
-* FGW14MS
 
 * FSB14 (needs actual hardware)
 * FDG14 (needs actual hardware, works different from FUD)

@@ -84,3 +84,38 @@ class A5_12_03(MeterReading): cum = 'volume'; cur = 'flow' # for water
 class A5_38_08(EEP):
     """So far, only a sentinel -- later, eltakobus.device should make use of
     this for en- and decoding"""
+    # FIXME: Decoding code resides in DimmerStyle.interpret_status_update, and
+    # the no-op here just makes sure that no unexpected exceptions fly around
+    # if any such teach-in telegram comes about
+
+class A5_13_01(EEP):
+    """Weather data
+
+    This decodes both A5-13-01 and A5-13-02 telegrams -- the latter should not
+    have received an EEP at all in the view of the author, for there are no -01
+    teach-in telegrams, and variations of -01 can be discerned by looking at an
+    identifier bit, just as variations between the meanings of meter reading
+    telegrams (cumulative, current) can be discerned.
+    """
+    fields = ['illuminance (dawn)', 'temperature', 'wind speed', 'rain', 'illuminance (west)', 'illuminance (central)', 'illuminance (east)', 'fault']
+
+    @classmethod
+    def decode(cls, data):
+        if data[3] >> 4 == 1:
+            if data == bytes((0, 0, 0xff, 0x1a)):
+                return {'fault': True}
+            return {
+                'illuminance (dawn)': 999 * data[0] / 255,
+                'temperature': -40 + 120 * data[1] / 255,
+                'wind speed': 70 * data[2] / 255,
+                'rain': bool(data[3] & 0x02),
+                'fault': False,
+                }
+        elif data[3] >> 4 == 2:
+            return {
+                'illuminance (west)': 150000 * data[0] / 255,
+                'illuminance (central)': 150000 * data[1] / 255,
+                'illuminance (east)': 150000 * data[2] / 255,
+                }
+        else:
+            return {}

@@ -272,7 +272,7 @@ class TeachInCollection:
                 continue
 
             if profile[0] == 0xf6:
-                self._seen_rps.append(address)
+                self._seen_rps.add(address)
                 # not creating entities; right now they're only logged
             elif profile[0] == 0xa5:
                 self.create_entity(address, profile)
@@ -340,7 +340,18 @@ class TeachInCollection:
             logger.warning("4BS from unknown source %s, discarding", b2a(msg.address))
             return
 
-        decoded = profile.decode(msg.data)
+        if profile is None:
+            # "No EEP support available for..." was already returned
+            return
+
+        try:
+            decoded = profile.decode(msg.data)
+            if not isinstance(decoded, dict):
+                # Could duck-typingly check, but meh
+                raise ValueError("decode function did not return a dictionary")
+        except Exception as e:
+            logging.error("Failed to decode 4BS message %s according to %s; continuing normally", msg, profile)
+            logging.exception(e)
 
         # Apply some rounding while home assistant does not know of precisison
         # or sane rounding
