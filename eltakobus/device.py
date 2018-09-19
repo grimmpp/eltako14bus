@@ -125,6 +125,7 @@ class DimmerStyle(BusObject):
         for memory_id in range(12, 128):
             line = await self.read_mem_line(memory_id)
             if line == expected_line:
+                self.bus.log.debug("%s: Found programming for profile %s in line %d", self, profile, memory_id)
                 return
             if not any(line) and first_empty is None:
                 first_empty = memory_id
@@ -261,6 +262,7 @@ class FSR14(BusObject):
         for memory_id in range(12, 128):
             line = await self.read_mem_line(memory_id)
             if line == expected_line:
+                self.bus.log.debug("%s: Found programming for subchannel %s and profile %s in line %d", self, subchannel, profile, memory_id)
                 return
             if not any(line) and first_empty is None:
                 first_empty = memory_id
