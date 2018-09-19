@@ -147,6 +147,7 @@ class EltakoBusController:
                 self.platforms['light']([e])
 
                 for source, profile in programming.get(d.address, {}).items():
+                    logger.debug("Verifying programming %s: %s", source, profile)
                     await d.ensure_programmed(source, profile)
             elif isinstance(d, device.FSR14):
                 await d.ensure_direct_command_addresses()
@@ -156,6 +157,7 @@ class EltakoBusController:
                     self.entities_for_status[d.address + subchannel] = [e]
 
                     for source, profile in programming.get(d.address + subchannel, {}).items():
+                        logger.debug("Verifying programming on subchannel %s %s: %s", subchannel, source, profile)
                         await d.ensure_programmed(subchannel, source, profile)
                 logger.info("Created FSR14 entity(s) for %s", d)
             elif isinstance(d, device.FWZ14_65A):
@@ -290,7 +292,7 @@ def parse_address_profile_pair(k, v):
         address = AddressExpression.parse(k)
         profile = ProfileExpression.parse(v)
     except ValueError:
-        logger.error('Invalid configuration entry %s: %s -- expected format is "01-23-45-67" for addresses and "a5-02-16" for values.', k, v)
+        logger.error('Invalid configuration entry %s: %s -- expected format is "01-23-45-67" (of "01-23-45-67 left") for addresses and "a5-02-16" for values.', k, v)
         return None, None
 
     return address, profile
@@ -302,7 +304,7 @@ class Programming(dict):
             try:
                 profile = EEP.find(profile)
             except KeyError:
-                logger.warning("Unknown profile %s, not processing any further", (profile,))
+                logger.warning("Unknown profile %s, not processing any further", profile)
                 return
             if address is not None:
                 self[address] = profile

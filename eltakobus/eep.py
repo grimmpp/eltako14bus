@@ -17,6 +17,9 @@ class ProfileExpression(tuple):
             raise ValueError
         return cls((int(x, 16) for x in psplit))
 
+    def __repr__(self):
+        return "<%s %s>" % (type(self).__name__, self)
+
     def __str__(self):
         return b2a(self).replace(' ', '-')
 
@@ -27,6 +30,9 @@ class AddressExpression(tuple):
     discriminator string (eg. "00-21-63-43 left", stored as (b'\0\x32\x63\x43',
     'left')) to the address which is used in the programming area to express
     sub-features of an address that neither fit there nor in the profile."""
+
+    def __repr__(self):
+        return "<%s %s>" % (type(self).__name__, self)
 
     def __str__(self):
         return b2a(self[0]).replace(' ', '-') + (" %s" % self[1] if self[1] is not None else "")
@@ -53,9 +59,8 @@ class EEP:
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
 
-        if not hasattr(cls, "eep") and cls.__name__.startswith('A5_') or \
-                cls.__name__.startswith('F6_') :
-            cls.eep = (0xa5, int(cls.__name__[3:5], 16), int(cls.__name__[6:8], 16))
+        if not hasattr(cls, "eep") and cls.__name__[:3] in (('A5_', 'F6_')):
+            cls.eep = tuple(int(x, 16) for x in cls.__name__.split('_'))
 
         if hasattr(cls, "eep"):
             cls.__by_eep_number[cls.eep] = cls
