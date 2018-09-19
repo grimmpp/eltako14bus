@@ -107,7 +107,7 @@ class EltakoBusController:
         logger.debug("Platforms registered")
         self.platforms = platforms
 
-    async def sweep(self, bus):
+    async def sweep(self, bus, programming):
         """With the bus locked, enumerate all devices on the bus, register them
         as entities and do any necessary configuration on them.
 
@@ -145,12 +145,18 @@ class EltakoBusController:
                 self.entities_for_status[d.address] = [e]
                 logger.info("Created dimmer entity for %s", d)
                 self.platforms['light']([e])
+
+                for source, profile in programming.get(d.address, {}).items():
+                    await d.ensure_programmed(source, profile)
             elif isinstance(d, device.FSR14):
                 await d.ensure_direct_command_addresses()
                 for subchannel in range(d.size):
                     e = FSR14Entity(d, subchannel, self.unique_id_prefix)
                     self.platforms['switch']([e])
                     self.entities_for_status[d.address + subchannel] = [e]
+
+                    for source, profile in programming.get(d.address + subchannel, {}).items():
+                        await d.ensure_programmed(subchannel, source, profile)
                 logger.info("Created FSR14 entity(s) for %s", d)
             elif isinstance(d, device.FWZ14_65A):
                 serial = await d.read_serial()
@@ -201,6 +207,7 @@ class EltakoBusController:
 
         teachins = TeachInCollection(self.hass, teachin_preconfigured, self.platforms['sensor'])
 
+        programming = {k: Programming(v) for (k, v) in self.config['eltako'].get('programming', {}).items()}
 
         bus = RS485SerialInterface(serial_dev, log=logger.getChild('serial'))
         self.unique_id_prefix = serial_dev.replace('/', '-').lstrip('-')
@@ -209,7 +216,7 @@ class EltakoBusController:
 
         logger.info("Serial device detected and ready")
 
-        await self.sweep(bus)
+        await self.sweep(bus, programming)
 
         logger.info("Bus ready. Full operational readiness may take a few seconds while the FAM scans the bus.")
 
@@ -274,6 +281,35 @@ class EltakoBusController:
         if type(msg) not in (message.EltakoPoll, message.EltakoPollForced):
             logger.debug("Discarding message %s", message.prettify(msg))
 
+def parse_address_profile_pair(k, v):
+    """Given an address and a profile in string form as they occur in the keys
+    and values of teach-in or programming lines, return them parsed or log an
+    error and ignore them (returng None, None)"""
+
+    try:
+        address = bytes(int(x, 16) for x in k.split('-'))
+        psplit = v.split('-')
+        profile = tuple([int(x, 16) for x in psplit[:3]] + psplit[3:])
+        if not 3 <= len(profile) <= 4 or len(address) != 4:
+            raise ValueError
+    except ValueError:
+        logger.error('Invalid configuration entry %s: %s -- expected format is "01-23-45-67" for addresses and "a5-02-16" for values.', k, v)
+        return None, None
+
+    return address, profile
+
+class Programming(dict):
+    def __init__(self, config):
+        for k, v in config.items():
+            address, profile = parse_address_profile_pair(k, v)
+            try:
+                profile = EEP.find(profile)
+            except KeyError:
+                logger.warning("Unknown profile %s, not processing any further", (profile,))
+                return
+            if address is not None:
+                self[address] = profile
+
 class TeachInCollection:
     def __init__(self, hass, preconfigured, add_entities_callback):
         self.hass = hass
@@ -284,13 +320,8 @@ class TeachInCollection:
         self._entities = {} # address -> list of entities
 
         for k, v in preconfigured.items():
-            try:
-                address = bytes(int(x, 16) for x in k.split('-'))
-                profile = tuple(int(x, 16) for x in v.split('-'))
-                if len(profile) != 3 or len(address) != 4:
-                    raise ValueError
-            except ValueError:
-                logger.error('Invalid configuration entry %s: %s -- expected format is "01-23-45-67" for addresses and "a5-02-16" for values.', k, v)
+            address, profile = parse_address_profile_pair(k, v)
+            if address is None:
                 continue
 
             if profile[0] == 0xf6:
@@ -306,7 +337,7 @@ class TeachInCollection:
         self.hass.components.persistent_notification.async_create(
                 """To make the resulting sensors persistent and remove this message, append the following lines in your <code>configuration.yaml</code> file:
                 <pre>eltako:<br />  teach-in:<br />""" +
-                "<br />".join('    "%02x-%02x-%02x-%02x": "%02x-%02x-%02x"' % (*m[0], *m[1]) for m in self._messages) +
+                "<br />".join('    "%02x-%02x-%02x-%02x": "%02x-%02x-%02x%s"' % (*a, *(p + ("",) if len(p) == 3 else p[:3] + ("-" + p[3],))) for (a, p) in self._messages) +
                 """</pre>""",
                 title="New EnOcean devices detected",
                 notification_id="eltako-teach-in"
@@ -320,7 +351,14 @@ class TeachInCollection:
     def feed_rps(self, msg):
         if msg.address not in self._seen_rps:
             self._seen_rps.add(msg.address)
-            self.announce(msg.address, (0xf6, 0x02, 0x01))
+            if msg.data[0] in (0x31, 0x30): # a left key
+                profile = (0xf6, 0x02, 0x01, "left")
+            elif msg.data[0] in (0x50, 0x70): # a right key
+                profile = (0xf6, 0x02, 0x01, "right")
+            else:
+                # or any other F6 profile, I'm out of heuristics here
+                profile = (0xf6, 0x01, 0x01)
+            self.announce(msg.address, profile)
             # not creating entities; right now they're only logged
 
     def create_entity(self, address, profile):
