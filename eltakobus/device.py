@@ -118,6 +118,13 @@ class DimmerStyle(BusObject):
         if profile is A5_38_08:
             # programmed as function 32, 1s ramp speed (0 seems not to mean "instant")
             expected_line = source + bytes((0, 32, 1, 0))
+        elif profile is F6_02_01_left:
+            # programmed as function 3, key is 5 for left. Last bytes set to
+            # 1,0 as by the PCT
+            expected_line = source + bytes((5, 3, 1, 0))
+        elif profile is F6_02_01_right:
+            # key 6 for right, rest as above
+            expected_line = source + bytes((6, 3, 1, 0))
         else:
             raise ValueError("It is unknown how this profile could be programmed in.")
 
