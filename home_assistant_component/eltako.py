@@ -96,32 +96,29 @@ class EltakoBusController:
         if self._bus_task is not None:
             self._bus_task.cancel()
 
-    async def main(self, platforms):
+    async def wait_for_platforms(self, platforms):
+        """Wait for the futures originally dealt out to the various platforms
+        to come back, so that at the end there is a .platforms property that
+        contains all the add_entities callbacks"""
         logger.debug("Waiting for platforms to register")
         for p in platforms:
             platforms[p] = await platforms[p]
         logger.debug("Platforms registered")
+        self.platforms = platforms
 
+    async def sweep(self, bus):
+        """With the bus locked, enumerate all devices on the bus, register them
+        as entities and do any necessary configuration on them.
 
-        serial_dev = self.config['eltako'].get(CONF_DEVICE)
-        teachin_preconfigured = self.config['eltako'].get('teach-in', {})
-
-        teachins = TeachInCollection(self.hass, teachin_preconfigured, platforms['sensor'])
-
-
-        bus = RS485SerialInterface(serial_dev, log=logger.getChild('serial'))
-        unique_id_prefix = serial_dev.replace('/', '-').lstrip('-')
-
-        await self.initialize_bus_task(bus.run)
-
-        logger.info("Serial device detected and ready")
+        Must only be called once because the duplicate entities created
+        otherwise are not taken into consideration."""
 
         logger.debug("Locking bus")
         bus_status = await locking.lock_bus(bus)
 
         logger.debug("Bus locked (%s), enumerating devices", bus_status)
 
-        entities_for_status = {}
+        self.entities_for_status = {}
 
         for i in range(1, 256):
             try:
@@ -143,23 +140,23 @@ class EltakoBusController:
 
             if isinstance(d, device.DimmerStyle):
                 await d.ensure_direct_command_address()
-                e = DimmerEntity(type(d).__name__, d, unique_id_prefix)
-                entities_for_status[d.address] = [e]
+                e = DimmerEntity(type(d).__name__, d, self.unique_id_prefix)
+                self.entities_for_status[d.address] = [e]
                 logger.info("Created dimmer entity for %s", d)
-                platforms['light']([e])
+                self.platforms['light']([e])
             elif isinstance(d, device.FSR14):
                 await d.ensure_direct_command_addresses()
                 for subchannel in range(d.size):
-                    e = FSR14Entity(d, subchannel, unique_id_prefix)
-                    platforms['switch']([e])
-                    entities_for_status[d.address + subchannel] = [e]
+                    e = FSR14Entity(d, subchannel, self.unique_id_prefix)
+                    self.platforms['switch']([e])
+                    self.entities_for_status[d.address + subchannel] = [e]
                 logger.info("Created FSR14 entity(s) for %s", d)
             elif isinstance(d, device.FWZ14_65A):
                 serial = await d.read_serial()
                 additional_state = {
                         'serial-number': serial,
                         }
-                prefix = "%s.%s.%s" % (unique_id_prefix, d.address, serial.replace(' ', '-'))
+                prefix = "%s.%s.%s" % (self.unique_id_prefix, d.address, serial.replace(' ', '-'))
                 e_cum = BusSensorEntity(
                         'FWZ14 65A [%s] cummulative' % d.address,
                         prefix + '.cum',
@@ -176,14 +173,14 @@ class EltakoBusController:
                         additional_state,
                         d,
                         )
-                platforms['sensor']([e_cum, e_cur])
-                entities_for_status[d.address] = [e_cum, e_cur]
+                self.platforms['sensor']([e_cum, e_cur])
+                self.entities_for_status[d.address] = [e_cum, e_cur]
                 logger.info("Created FWZ14 entities")
             else:
                 continue
 
-        logger.debug("Forcing status messages from %d known channels" % len(entities_for_status))
-        for addr, entities in entities_for_status.items():
+        logger.debug("Forcing status messages from %d known channels" % len(self.entities_for_status))
+        for addr, entities in self.entities_for_status.items():
             for entity in entities:
                 forced_answer = await bus.exchange(message.EltakoPollForced(addr))
                 logger.debug("Answer to forced poll on %d is %s", addr, forced_answer)
@@ -195,63 +192,86 @@ class EltakoBusController:
         bus_status = await locking.unlock_bus(bus)
         logger.debug("Bus unlocked (%s)", bus_status)
 
+    async def main(self, platforms):
+        await self.wait_for_platforms(platforms)
+
+        serial_dev = self.config['eltako'].get(CONF_DEVICE)
+        teachin_preconfigured = self.config['eltako'].get('teach-in', {})
+
+        teachins = TeachInCollection(self.hass, teachin_preconfigured, self.platforms['sensor'])
+
+
+        bus = RS485SerialInterface(serial_dev, log=logger.getChild('serial'))
+        self.unique_id_prefix = serial_dev.replace('/', '-').lstrip('-')
+
+        await self.initialize_bus_task(bus.run)
+
+        logger.info("Serial device detected and ready")
+
+        await self.sweep(bus)
+
         logger.info("Bus ready. Full operational readiness may take a few seconds while the FAM scans the bus.")
 
         while True:
-            msg = await bus.received.get()
+            await self.step(bus, teachins)
 
-            address = None
-            try:
-                msg = message.EltakoWrappedRPS.parse(msg.serialize())
-            except ParseError:
-                pass
-            else:
-                address = msg.address[-1]
-            try:
-                msg = message.EltakoWrapped4BS.parse(msg.serialize())
-            except ParseError:
-                pass
-            else:
-                address = msg.address[-1]
+    async def step(self, bus, teachins):
+        """Process a single bus message"""
+        msg = await bus.received.get()
 
-            if address in entities_for_status:
-                for entity in entities_for_status[address]:
-                    try:
-                        await entity.process_message(msg)
-                    except UnrecognizedUpdate as e:
-                        logger.warn("Update to %s could not be processed: %s", entity, msg)
-                        logger.exception(e)
-                continue
+        address = None
+        try:
+            msg = message.EltakoWrappedRPS.parse(msg.serialize())
+        except ParseError:
+            pass
+        else:
+            address = msg.address[-1]
+        try:
+            msg = message.EltakoWrapped4BS.parse(msg.serialize())
+        except ParseError:
+            pass
+        else:
+            address = msg.address[-1]
 
-            # so it's not an eltakowrapped message... maybe regular 4bs/rps?
-            try:
-                msg = message.RPSMessage.parse(msg.serialize())
-            except ParseError as e:
-                pass
-            else:
-                teachins.feed_rps(msg)
-                continue
+        if address in self.entities_for_status:
+            for entity in self.entities_for_status[address]:
+                try:
+                    await entity.process_message(msg)
+                except UnrecognizedUpdate as e:
+                    logger.error("Update to %s could not be processed: %s", entity, msg)
+                    logger.exception(e)
 
-            try:
-                msg = message.Regular4BSMessage.parse(msg.serialize())
-            except ParseError:
-                pass
-            else:
-                teachins.dispatch_4bs(msg)
-                continue
+            return
 
-            try:
-                msg = message.TeachIn4BSMessage2.parse(msg.serialize())
-            except ParseError:
-                pass
-            else:
-                teachins.feed_4bs(msg)
-                continue
+        # so it's not an eltakowrapped message... maybe regular 4bs/rps?
+        try:
+            msg = message.RPSMessage.parse(msg.serialize())
+        except ParseError as e:
+            pass
+        else:
+            teachins.feed_rps(msg)
+            return
 
-            # It's for debug only, prettify is OK here
-            msg = message.prettify(msg)
-            if type(msg) not in (message.EltakoPoll, message.EltakoPollForced):
-                logger.debug("Discarding message %s", message.prettify(msg))
+        try:
+            msg = message.Regular4BSMessage.parse(msg.serialize())
+        except ParseError:
+            pass
+        else:
+            teachins.dispatch_4bs(msg)
+            return
+
+        try:
+            msg = message.TeachIn4BSMessage2.parse(msg.serialize())
+        except ParseError:
+            pass
+        else:
+            teachins.feed_4bs(msg)
+            return
+
+        # It's for debug only, prettify is OK here
+        msg = message.prettify(msg)
+        if type(msg) not in (message.EltakoPoll, message.EltakoPollForced):
+            logger.debug("Discarding message %s", message.prettify(msg))
 
 class TeachInCollection:
     def __init__(self, hass, preconfigured, add_entities_callback):
