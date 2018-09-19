@@ -323,10 +323,9 @@ class Programming(dict):
 class TeachInCollection:
     def __init__(self, hass, preconfigured, programming, add_entities_callback):
         self.hass = hass
-        self._seen_rps = set()
-        self._seen_4bs = {}
-        self._messages_teach_in = [] # list of (address, profile) pairs
-        self._messages_assignable = [] # like teach_in, but probably go into a programming section
+        self._statically_known = set()
+        self._announced = set()
+        self._4bs_profiles = {}
         self._add_entities_callback = add_entities_callback
         self._entities = {} # address -> list of entities
 
@@ -345,15 +344,50 @@ class TeachInCollection:
             if address is None:
                 continue
 
+            self._statically_known.add(address)
             if profile[0] == 0xf6:
-                self._seen_rps.add((address, profile))
                 # not creating entities; right now they're only logged
+                pass
             elif profile[0] == 0xa5:
                 self.create_entity(address, profile)
             else:
                 logger.error('Invalid profile %s: Only RPS and 4BS (f6-... and a5-...) supported', (profile,))
 
+    def reset_messages(self):
+        """Reset the to-be-shown messages, and rewind the _seen_rps and _4bs_profiles ... @@@"""
+        self._messages_teach_in = [] # list of (address, profile) pairs
+        self._messages_assignable = [] # like teach_in, but probably go into a programming section
+        self._announced = set()
+
     def announce(self, address, profile):
+        """Announce the address/profile combination to the user interface. This
+        checks if it has been announced previously, but before doing so asks
+        back whether the UI dismissed the notifications."""
+
+        # Poll whether there might have been a "dismissed" event (or just never present)
+        #
+        # If we could get a callback here instead to clean up (would be nice),
+        # then we could move the checks for already having been announced
+        # outside of announce again, and especially the special case below
+        # could have its checking where it is created.
+        was_dismissed = self.hass.states.get('persistent_notification.eltakoteachin') is None
+        if was_dismissed:
+            # was not shown, or was dismissed
+            logger.debug("Teach-in notification was dismissed")
+            self.reset_messages()
+
+        if address in self._announced or address in self._statically_known:
+            logger.warning("Not sending: already shown")
+            return
+        # Special case for RPS: Don't announce fallback profiles if any more specific profile is present
+        if profile == ProfileExpression((0xf6, 0x01, 0x01)):
+            if any(a[0] == address[0] for a in self._announced.union(self._statically_known)):
+                logger.warning("Not sending: better is known")
+                return
+
+
+        self._announced.add(address)
+
         if profile == ProfileExpression((0xf6, 0x02, 0x01)) and address[1] in ('left', 'right'):
             self._messages_assignable.append((address, profile))
         else:
@@ -392,14 +426,15 @@ class TeachInCollection:
                 )
 
     def feed_4bs(self, msg):
-        if msg.address not in self._seen_4bs:
-            profile = ProfileExpression(msg.profile)
-            address = AddressExpression((msg.address, None))
-            self.announce(address, profile)
+        address = AddressExpression((msg.address, None))
+        profile = ProfileExpression(msg.profile)
+
+        if msg.address not in self._4bs_profiles:
             self.create_entity(address, profile)
 
+        self.announce(address, profile)
+
     def feed_rps(self, msg):
-        is_fallback = False
         if msg.data[0] in (0x30, 0x20): # a left key
             address = AddressExpression((msg.address, "left"))
             profile = ProfileExpression((0xf6, 0x02, 0x01))
@@ -407,21 +442,11 @@ class TeachInCollection:
             address = AddressExpression((msg.address, "right"))
             profile = ProfileExpression((0xf6, 0x02, 0x01))
         else:
-            is_fallback = True
             address = AddressExpression((msg.address, None))
             # or any other F6 profile, I'm out of heuristics here
             profile = ProfileExpression((0xf6, 0x01, 0x01))
 
-        seen = (address, profile) in self._seen_rps
-        if not seen and is_fallback:
-            # Don't display the fallback message if any better expression has
-            # been displayed already
-            seen = any(a[0] == address[0] for (a, p) in self._seen_rps)
-
-        if not seen:
-            self._seen_rps.add((address, profile))
-            self.announce(address, profile)
-            # not creating entities; right now they're only logged
+        self.announce(address, profile)
 
     def create_entity(self, address: AddressExpression, profile: ProfileExpression):
         """Create and register appropriate entity(ies) based on an address and
@@ -432,10 +457,10 @@ class TeachInCollection:
             eep = EEP.find(profile)
         except KeyError:
             logger.error("No EEP support available for %s, ignoring values from that sensor", profile)
-            self._seen_4bs[a_plain] = None # don't report again
+            self._4bs_profiles[a_plain] = None # don't report again
             return
 
-        self._seen_4bs[a_plain] = eep
+        self._4bs_profiles[a_plain] = eep
 
         field_to_unit = {
                 'temperature': '°C',
@@ -462,7 +487,7 @@ class TeachInCollection:
 
     def dispatch_4bs(self, msg):
         try:
-            profile = self._seen_4bs[msg.address]
+            profile = self._4bs_profiles[msg.address]
         except KeyError:
             logger.warning("4BS from unknown source %s, discarding", b2a(msg.address))
             return
