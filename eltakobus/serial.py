@@ -32,23 +32,30 @@ class RS485SerialInterface(BusInterface):
         if self.suppress_echo is None:
             self.log.debug("Performing echo detection")
             # any character sequence as long as it won't look like the preamble and confuse other bus participants
-            for i in range(5):
+            for i in range(20):
                 # flush the input; FIXME tapping into StreamReader internals means I should implement a protocol
                 reader._buffer.clear()
                 echotest = b'\xff\x00\xff'
                 self._writer.write(echotest)
                 try:
-                    read = await asyncio.wait_for(reader.readexactly(len(echotest)), timeout=0.5, loop=self._loop)
+                    read = await asyncio.wait_for(reader.readexactly(len(echotest)), timeout=0.1, loop=self._loop)
                 except asyncio.TimeoutError:
                     self.suppress_echo = False
                     self.log.debug("No echo detected on the line")
+                    # There's some raciness in the wait_for readexactly that'd
+                    # cause later readexactly calls fail with 'called while
+                    # another coroutine is already waiting for incoming data';
+                    # that could be mitigated by increasing the above's
+                    # timeout, but that would mean not detecting the absence of
+                    # echo in chatty lines.
+                    await asyncio.sleep(0.3)
                     break
                 if read == echotest:
                     self.suppress_echo = True
                     self.log.debug("Echo detected on the line, enabling suppression")
                     break
                 else:
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.3)
                     continue
             else:
                 conn_made.set_exception(RuntimeError("Echo detection failed"))
