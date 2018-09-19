@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import itertools
 
 from homeassistant.const import CONF_DEVICE
 import homeassistant.helpers.config_validation as cv
@@ -206,10 +207,10 @@ class EltakoBusController:
 
         serial_dev = self.config['eltako'].get(CONF_DEVICE)
         teachin_preconfigured = self.config['eltako'].get('teach-in', {})
+        programming_config = self.config['eltako'].get('programming', {})
 
-        teachins = TeachInCollection(self.hass, teachin_preconfigured, self.platforms['sensor'])
-
-        programming = {k: Programming(v) for (k, v) in self.config['eltako'].get('programming', {}).items()}
+        programming = {k: Programming(v) for (k, v) in programming_config.items()}
+        teachins = TeachInCollection(self.hass, teachin_preconfigured, programming_config, self.platforms['sensor'])
 
         bus = RS485SerialInterface(serial_dev, log=logger.getChild('serial'))
         self.unique_id_prefix = serial_dev.replace('/', '-').lstrip('-')
@@ -301,6 +302,8 @@ class Programming(dict):
     def __init__(self, config):
         for k, v in config.items():
             address, profile = parse_address_profile_pair(k, v)
+            if address is None:
+                continue
             try:
                 profile = EEP.find(profile)
             except KeyError:
@@ -310,7 +313,7 @@ class Programming(dict):
                 self[address] = profile
 
 class TeachInCollection:
-    def __init__(self, hass, preconfigured, add_entities_callback):
+    def __init__(self, hass, preconfigured, programming, add_entities_callback):
         self.hass = hass
         self._seen_rps = set()
         self._seen_4bs = {}
@@ -318,7 +321,17 @@ class TeachInCollection:
         self._add_entities_callback = add_entities_callback
         self._entities = {} # address -> list of entities
 
-        for k, v in preconfigured.items():
+        # Not only use the stored teach-in telegrams, but also the ones
+        # explicitly configure to do something in any of the actuators.
+        #
+        # Not using the parsed Programming data because that went a step too
+        # far by already resolving the profile expressions into EEPs
+        items = itertools.chain(
+                preconfigured.items(),
+                *(p.items() for p in programming.values())
+                )
+
+        for k, v in items:
             address, profile = parse_address_profile_pair(k, v)
             if address is None:
                 continue
