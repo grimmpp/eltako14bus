@@ -317,7 +317,8 @@ class TeachInCollection:
         self.hass = hass
         self._seen_rps = set()
         self._seen_4bs = {}
-        self._messages = [] # list of (address, profile) pairs
+        self._messages_teach_in = [] # list of (address, profile) pairs
+        self._messages_assignable = [] # like teach_in, but probably go into a programming section
         self._add_entities_callback = add_entities_callback
         self._entities = {} # address -> list of entities
 
@@ -345,20 +346,49 @@ class TeachInCollection:
                 logger.error('Invalid profile %s: Only RPS and 4BS (f6-... and a5-...) supported', (profile,))
 
     def announce(self, address, profile):
-        self._messages.append((address, profile))
+        if profile == ProfileExpression((0xf6, 0x02, 0x01)) and address[1] in ('left', 'right'):
+            self._messages_assignable.append((address, profile))
+        else:
+            self._messages_teach_in.append((address, profile))
+
+        if self._messages_teach_in:
+            teach_in_part = "<br />  teach-in:<br />""" + \
+                "<br />".join(
+                    '    "%s": "%s"' % (a, p) for (a, p) in self._messages_teach_in
+                )
+        else:
+            teach_in_part = ""
+
+        if self._messages_assignable:
+            programming_part = "<br />  programming:<br />    <i>some channel number</i>:<br />""" + \
+                "<br />".join(
+                    '      "%s": "%s"' % (a, p) for (a, p) in self._messages_assignable
+                )
+        else:
+            programming_part = ""
+
+        full_text = """To make the resulting sensors persistent and remove this
+            message, append the following lines in your
+            <code>configuration.yaml</code> file:
+            <pre>eltako:""" + teach_in_part + programming_part + """</pre>"""
+
+        if programming_part:
+            full_text += """where the channel number can be picked from the
+                <code>eltako-bus-address</code> property of supported
+                actuators."""
+
         self.hass.components.persistent_notification.async_create(
-                """To make the resulting sensors persistent and remove this message, append the following lines in your <code>configuration.yaml</code> file:
-                <pre>eltako:<br />  teach-in:<br />""" +
-                "<br />".join('    "%s": "%s"' % (a, p) for (a, p) in self._messages) +
-                """</pre>""",
+                full_text,
                 title="New EnOcean devices detected",
                 notification_id="eltako-teach-in"
                 )
 
     def feed_4bs(self, msg):
         if msg.address not in self._seen_4bs:
-            self.announce(msg.address, msg.profile)
-            self.create_entity(msg.address, msg.profile)
+            profile = ProfileExpression(msg.profile)
+            address = AddressExpression((msg.address, None))
+            self.announce(address, profile)
+            self.create_entity(address, profile)
 
     def feed_rps(self, msg):
         is_fallback = False
@@ -385,18 +415,19 @@ class TeachInCollection:
             self.announce(address, profile)
             # not creating entities; right now they're only logged
 
-    def create_entity(self, address, profile):
+    def create_entity(self, address: AddressExpression, profile: ProfileExpression):
         """Create and register appropriate entity(ies) based on an address and
         profile obtained from a teach-in telegram or configuration"""
 
+        a_plain = address.plain_address()
         try:
             eep = EEP.find(profile)
         except KeyError:
-            logger.error("No EEP support available for %s, ignoring values from that sensor", (profile,))
-            self._seen_4bs[address] = None # don't report again
+            logger.error("No EEP support available for %s, ignoring values from that sensor", profile)
+            self._seen_4bs[a_plain] = None # don't report again
             return
 
-        self._seen_4bs[address] = eep
+        self._seen_4bs[a_plain] = eep
 
         field_to_unit = {
                 'temperature': '°C',
@@ -419,7 +450,7 @@ class TeachInCollection:
                 "state_attributes": {'enocean-address': str(address), 'enocean-profile': str(profile)},
                 })
             instance = entity_class()
-            self._entities.setdefault(address, {})[field] = instance
+            self._entities.setdefault(a_plain, {})[field] = instance
             self._add_entities_callback([instance])
 
     def dispatch_4bs(self, msg):
@@ -496,6 +527,7 @@ class DimmerEntity(EltakoEntity, Light):
         base = super().state_attributes or {}
         return {**base,
                 'eltako-bus-address': self.busobject.address,
+                'eltako-bus-address-base': self.busobject.address,
                 'eltako-device-version': ".".join(map(str, self.busobject.version)),
                 }
 
@@ -538,8 +570,8 @@ class FSR14Entity(EltakoEntity, SwitchDevice):
     def state_attributes(self):
         base = super().state_attributes or {}
         return {**base,
-                'eltako-bus-address': self.busobject.address,
-                'eltako-bus-address-subchannel': self.subchannel,
+                'eltako-bus-address': self.busobject.address + self.subchannel,
+                'eltako-bus-address-base': self.busobject.address,
                 'eltako-device-version': ".".join(map(str, self.busobject.version)),
                 }
 
@@ -577,6 +609,7 @@ class BusSensorEntity(EltakoEntity, Entity):
         return {**base,
                 **self.additional_state,
                 'eltako-bus-address': self.busobject.address,
+                'eltako-bus-address-base': self.busobject.address,
                 'eltako-device-version': ".".join(map(str, self.busobject.version)),
                 }
 
