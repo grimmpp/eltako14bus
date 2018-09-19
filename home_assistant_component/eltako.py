@@ -30,6 +30,7 @@ logger = logging.getLogger('eltako')
 #   default: warning
 #   logs:
 #     eltako: debug
+del logging # just to make sure nobody accidentally `logging.warning`s something
 
 # Passing the futures around in a global rather than in discovery_info because
 # recorder would try to serialize discovery_info and die from it. (Showing a
@@ -376,8 +377,8 @@ class TeachInCollection:
                 # Could duck-typingly check, but meh
                 raise ValueError("decode function did not return a dictionary")
         except Exception as e:
-            logging.error("Failed to decode 4BS message %s according to %s; continuing normally", msg, profile)
-            logging.exception(e)
+            logger.error("Failed to decode 4BS message %s according to %s; continuing normally", msg, profile)
+            logger.exception(e)
 
         # Apply some rounding while home assistant does not know of precisison
         # or sane rounding
