@@ -2,6 +2,8 @@ import asyncio
 import logging
 import itertools
 
+import re
+
 from homeassistant.const import CONF_DEVICE
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers import discovery
@@ -32,6 +34,12 @@ logger = logging.getLogger('eltako')
 #   logs:
 #     eltako: debug
 del logging # just to make sure nobody accidentally `logging.warning`s something
+
+def into_entity_id_part(s):
+    """Filter out anything that wouldn't pass by is_valid_entity_id and replace
+    it with underscores. This does not take care of having a dot somewhere in
+    it."""
+    return re.sub(r'[^\w]', '_', s)
 
 # Passing the futures around in a global rather than in discovery_info because
 # recorder would try to serialize discovery_info and die from it. (Showing a
@@ -142,7 +150,7 @@ class EltakoBusController:
 
             if isinstance(d, device.DimmerStyle):
                 await d.ensure_direct_command_address()
-                e = DimmerEntity(type(d).__name__, d, self.unique_id_prefix)
+                e = DimmerEntity(type(d).__name__, d, self.bus_id_part)
                 self.entities_for_status[d.address] = [e]
                 logger.info("Created dimmer entity for %s", d)
                 self.platforms['light']([e])
@@ -153,7 +161,7 @@ class EltakoBusController:
             elif isinstance(d, device.FSR14):
                 await d.ensure_direct_command_addresses()
                 for subchannel in range(d.size):
-                    e = FSR14Entity(d, subchannel, self.unique_id_prefix)
+                    e = FSR14Entity(d, subchannel, self.bus_id_part)
                     self.platforms['switch']([e])
                     self.entities_for_status[d.address + subchannel] = [e]
 
@@ -166,10 +174,10 @@ class EltakoBusController:
                 additional_state = {
                         'serial-number': serial,
                         }
-                prefix = "%s.%s.%s" % (self.unique_id_prefix, d.address, serial.replace(' ', '-'))
+                prefix = "sensor.%s_%s_%s" % (self.bus_id_part, d.address, serial.replace(' ', ''))
                 e_cum = BusSensorEntity(
                         'FWZ14 65A [%s] cummulative' % d.address,
-                        prefix + '.cum',
+                        prefix + '_cum',
                         'kWh',
                         (0, 'energy'),
                         additional_state,
@@ -177,7 +185,7 @@ class EltakoBusController:
                         )
                 e_cur = BusSensorEntity(
                         'FWZ14 65A [%s] current' % d.address,
-                        prefix + '.cur',
+                        prefix + '_cur',
                         'W',
                         (0, 'power'),
                         additional_state,
@@ -213,7 +221,7 @@ class EltakoBusController:
         teachins = TeachInCollection(self.hass, teachin_preconfigured, programming_config, self.platforms['sensor'])
 
         bus = RS485SerialInterface(serial_dev, log=logger.getChild('serial'))
-        self.unique_id_prefix = serial_dev.replace('/', '-').lstrip('-')
+        self.bus_id_part = into_entity_id_part(serial_dev.replace('/dev/', ''))
 
         await self.initialize_bus_task(bus.run)
 
@@ -442,8 +450,7 @@ class TeachInCollection:
             entity_class = type("CustomSensor", (Entity,), {
                 "poll": False,
                 "name": "%s Sensor %s" % (field.capitalize(), address),
-                "entity_id": "sensor.enocean.%s-%s" % (address, field),
-                "unique_id": "sensor.enocean.%s-%s" % (address, field),
+                "entity_id": "sensor.enocean_%s_%s" % (str(address).replace('-', ''), into_entity_id_part(field)),
                 "state": None,
                 "assumed_state": True,
                 "unit_of_measurement": field_to_unit.get(field, ''),
@@ -489,14 +496,13 @@ class TeachInCollection:
 class EltakoEntity:
     poll = False
 
-    unique_id = property(lambda self: self._unique_id)
-    entity_id = None # how should that be shaped?
+    entity_id = None # set in constructor
     name = property(lambda self: self._name)
 
 class DimmerEntity(EltakoEntity, Light):
-    def __init__(self, typename, busobject, unique_id_prefix):
+    def __init__(self, typename, busobject, bus_id_part):
         self.busobject = busobject
-        self._unique_id = "%s-%s" % (unique_id_prefix, busobject.address)
+        self.entity_id = "light.%s_%s" % (bus_id_part, busobject.address)
         self._name = "%s [%s]" % (typename, busobject.address)
         self._state = None
 
@@ -551,10 +557,10 @@ class DimmerEntity(EltakoEntity, Light):
         await self.busobject.set_state(0)
 
 class FSR14Entity(EltakoEntity, SwitchDevice):
-    def __init__(self, busobject, subchannel, unique_id_prefix):
+    def __init__(self, busobject, subchannel, bus_id_part):
         self.busobject = busobject
         self.subchannel = subchannel
-        self._unique_id = "%s-%s-%s" % (unique_id_prefix, busobject.address, subchannel)
+        self.entity_id = "switch.%s_%s" % (bus_id_part, busobject.address + subchannel)
         self._name = "%s [%s/%s]" % (type(busobject).__name__, busobject.address, subchannel)
         self._state = None
 
@@ -595,8 +601,8 @@ class BusSensorEntity(EltakoEntity, Entity):
     assumed_state = True
     unit_of_measurement = None
 
-    def __init__(self, name, unique_id, unit, update_to_state_key, additional_state, busobject):
-        self._unique_id = unique_id
+    def __init__(self, name, entity_id, unit, update_to_state_key, additional_state, busobject):
+        self.entity_id = entity_id
         self._name = name
         self.unit_of_measurement = unit
         self.update_to_state_key = update_to_state_key
