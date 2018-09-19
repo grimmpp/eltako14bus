@@ -350,7 +350,7 @@ class TeachInCollection:
     def feed_rps(self, msg):
         if msg.address not in self._seen_rps:
             self._seen_rps.add(msg.address)
-            if msg.data[0] in (0x31, 0x30): # a left key
+            if msg.data[0] in (0x30, 0x20): # a left key
                 profile = ProfileExpression((0xf6, 0x02, 0x01, "left"))
             elif msg.data[0] in (0x50, 0x70): # a right key
                 profile = ProfileExpression((0xf6, 0x02, 0x01, "right"))
