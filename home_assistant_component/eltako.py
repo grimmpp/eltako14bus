@@ -18,7 +18,7 @@ from eltakobus.util import b2a
 from eltakobus import device
 from eltakobus import message
 from eltakobus import locking
-from eltakobus.eep import EEP
+from eltakobus.eep import EEP, ProfileExpression
 from eltakobus.error import TimeoutError, ParseError, UnrecognizedUpdate
 
 DOMAIN = 'eltako'
@@ -288,10 +288,9 @@ def parse_address_profile_pair(k, v):
 
     try:
         address = bytes(int(x, 16) for x in k.split('-'))
-        psplit = v.split('-')
-        profile = tuple([int(x, 16) for x in psplit[:3]] + psplit[3:])
-        if not 3 <= len(profile) <= 4 or len(address) != 4:
+        if len(address) != 4:
             raise ValueError
+        profile = ProfileExpression.parse(v)
     except ValueError:
         logger.error('Invalid configuration entry %s: %s -- expected format is "01-23-45-67" for addresses and "a5-02-16" for values.', k, v)
         return None, None
@@ -330,14 +329,14 @@ class TeachInCollection:
             elif profile[0] == 0xa5:
                 self.create_entity(address, profile)
             else:
-                logger.error('Invalid profile %s: Only RPS and 4BS (f6-... and a5-...) supported', "-".join("%02x" % x for x in profile))
+                logger.error('Invalid profile %s: Only RPS and 4BS (f6-... and a5-...) supported', (profile,))
 
     def announce(self, address, profile):
         self._messages.append((address, profile))
         self.hass.components.persistent_notification.async_create(
                 """To make the resulting sensors persistent and remove this message, append the following lines in your <code>configuration.yaml</code> file:
                 <pre>eltako:<br />  teach-in:<br />""" +
-                "<br />".join('    "%02x-%02x-%02x-%02x": "%02x-%02x-%02x%s"' % (*a, *(p + ("",) if len(p) == 3 else p[:3] + ("-" + p[3],))) for (a, p) in self._messages) +
+                "<br />".join('    "%s": "%s"' % (b2a(a).replace(' ', '-'), p) for (a, p) in self._messages) +
                 """</pre>""",
                 title="New EnOcean devices detected",
                 notification_id="eltako-teach-in"
@@ -352,12 +351,12 @@ class TeachInCollection:
         if msg.address not in self._seen_rps:
             self._seen_rps.add(msg.address)
             if msg.data[0] in (0x31, 0x30): # a left key
-                profile = (0xf6, 0x02, 0x01, "left")
+                profile = ProfileExpression((0xf6, 0x02, 0x01, "left"))
             elif msg.data[0] in (0x50, 0x70): # a right key
-                profile = (0xf6, 0x02, 0x01, "right")
+                profile = ProfileExpression((0xf6, 0x02, 0x01, "right"))
             else:
                 # or any other F6 profile, I'm out of heuristics here
-                profile = (0xf6, 0x01, 0x01)
+                profile = ProfileExpression((0xf6, 0x01, 0x01))
             self.announce(msg.address, profile)
             # not creating entities; right now they're only logged
 
@@ -368,7 +367,7 @@ class TeachInCollection:
         try:
             eep = EEP.find(profile)
         except KeyError:
-            logger.error("No EEP support available for %s, ignoring values from that sensor", "-".join("%02x" % x for x in profile))
+            logger.error("No EEP support available for %s, ignoring values from that sensor", (profile,))
             self._seen_4bs[address] = None # don't report again
             return
 

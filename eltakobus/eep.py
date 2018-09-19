@@ -3,6 +3,31 @@
 This does not access the XML EEP definitions due to their unclear license
 status."""
 
+class ProfileExpression(tuple):
+    """A 3- or 4-tuple expressing a profile without actually guaranteeing that
+    it is implemenmted. This is mainly for passing around user-entered values
+    and reporting errors about them.
+
+    The first three components are the EEP identifiers as known from the EEP
+    specification. The fourth component can be a disambiguation string for
+    cases when the plain EEP and the body of a message are insufficient to
+    describe whether any particualr semantics (eg. on or off) can be derived
+    from a message.
+    """
+
+    @classmethod
+    def parse(cls, s):
+        psplit = s.split('-')
+        if not 3 <= len(psplit) <= 4:
+            raise ValueError
+        return cls([int(x, 16) for x in psplit[:3]] + psplit[3:])
+
+    def __str__(self):
+        if len(self) == 3:
+            return "%02x-%02x-%02x" % self
+        else:
+            return "%02x-%02x-%02x-%s" % self
+
 class EEP:
     __by_eep_number = {}
 
@@ -120,7 +145,7 @@ class A5_13_01(EEP):
         else:
             return {}
 
-class PseudoEEP:
+class PseudoEEP(EEP):
     """Base class for some token classes where the behavior of a programmed
     device (even single-channel) is not sufficiently described by an EEP, but
     needs additional information (eg. whether to respond to the left or the
@@ -128,6 +153,8 @@ class PseudoEEP:
 class F6_02_01_left(PseudoEEP):
     """2-part Rocker switch, Application Style 1 (European, bottom switches
     on), utilizing left part"""
+    eep = (0xf6, 0x02, 0x01, "left")
 class F6_02_01_right(PseudoEEP):
     """2-part Rocker switch, Application Style 1 (European, bottom switches
     on), utilizing right part"""
+    eep = (0xf6, 0x02, 0x01, "right")
