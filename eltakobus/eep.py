@@ -3,30 +3,49 @@
 This does not access the XML EEP definitions due to their unclear license
 status."""
 
-class ProfileExpression(tuple):
-    """A 3- or 4-tuple expressing a profile without actually guaranteeing that
-    it is implemenmted. This is mainly for passing around user-entered values
-    and reporting errors about them.
+from .util import b2a
 
-    The first three components are the EEP identifiers as known from the EEP
-    specification. The fourth component can be a disambiguation string for
-    cases when the plain EEP and the body of a message are insufficient to
-    describe whether any particualr semantics (eg. on or off) can be derived
-    from a message.
-    """
+class ProfileExpression(tuple):
+    """A 3-tuple expressing a profile without actually guaranteeing that it is
+    implemenmted. This is mainly for passing around user-entered values and
+    reporting errors about them."""
 
     @classmethod
     def parse(cls, s):
         psplit = s.split('-')
-        if not 3 <= len(psplit) <= 4:
+        if 3 != len(psplit):
             raise ValueError
-        return cls([int(x, 16) for x in psplit[:3]] + psplit[3:])
+        return cls((int(x, 16) for x in psplit))
 
     def __str__(self):
-        if len(self) == 3:
-            return "%02x-%02x-%02x" % self
-        else:
-            return "%02x-%02x-%02x-%s" % self
+        return b2a(self).replace(' ', '-')
+
+class AddressExpression(tuple):
+    """An object around the 4-long byte strings passed around for addressing
+    purposes. This supports parsing and serialization for user-readable
+    purposes (esp. in home assistant), but also adds the possibility to add a
+    discriminator string (eg. "00-21-63-43 left", stored as (b'\0\x32\x63\x43',
+    'left')) to the address which is used in the programming area to express
+    sub-features of an address that neither fit there nor in the profile."""
+
+    def __str__(self):
+        return b2a(self[0]).replace(' ', '-') + (" %s" % self[1] if self[1] is not None else "")
+
+    @classmethod
+    def parse(cls, s):
+        plain, delim, discriminator = s.partition(' ')
+        if not delim:
+            discriminator = None
+        plain = bytes(int(x, 16) for x in plain.split('-'))
+        if len(plain) != 4:
+            raise ValueError
+        return cls((plain, discriminator))
+
+    def plain_address(self):
+        """Return the address and assert that no discriminator is set"""
+        if self[1] is not None:
+            raise ValueError("Address has disciminator %s, None expected" % self[1])
+        return self[0]
 
 class EEP:
     __by_eep_number = {}
@@ -34,7 +53,8 @@ class EEP:
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
 
-        if not hasattr(cls, "eep") and cls.__name__.startswith('A5_'):
+        if not hasattr(cls, "eep") and cls.__name__.startswith('A5_') or \
+                cls.__name__.startswith('F6_') :
             cls.eep = (0xa5, int(cls.__name__[3:5], 16), int(cls.__name__[6:8], 16))
 
         if hasattr(cls, "eep"):
@@ -145,16 +165,8 @@ class A5_13_01(EEP):
         else:
             return {}
 
-class PseudoEEP(EEP):
-    """Base class for some token classes where the behavior of a programmed
-    device (even single-channel) is not sufficiently described by an EEP, but
-    needs additional information (eg. whether to respond to the left or the
-    right half of a double rocker switch."""
-class F6_02_01_left(PseudoEEP):
+class F6_02_01(EEP):
     """2-part Rocker switch, Application Style 1 (European, bottom switches
-    on), utilizing left part"""
-    eep = (0xf6, 0x02, 0x01, "left")
-class F6_02_01_right(PseudoEEP):
-    """2-part Rocker switch, Application Style 1 (European, bottom switches
-    on), utilizing right part"""
-    eep = (0xf6, 0x02, 0x01, "right")
+    on)"""
+class F6_02_02(EEP):
+    """2-part Rocker switch, Application Style 2 (US, top switches on)"""

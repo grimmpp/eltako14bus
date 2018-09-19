@@ -18,7 +18,7 @@ from eltakobus.util import b2a
 from eltakobus import device
 from eltakobus import message
 from eltakobus import locking
-from eltakobus.eep import EEP, ProfileExpression
+from eltakobus.eep import EEP, ProfileExpression, AddressExpression
 from eltakobus.error import TimeoutError, ParseError, UnrecognizedUpdate
 
 DOMAIN = 'eltako'
@@ -287,9 +287,7 @@ def parse_address_profile_pair(k, v):
     error and ignore them (returng None, None)"""
 
     try:
-        address = bytes(int(x, 16) for x in k.split('-'))
-        if len(address) != 4:
-            raise ValueError
+        address = AddressExpression.parse(k)
         profile = ProfileExpression.parse(v)
     except ValueError:
         logger.error('Invalid configuration entry %s: %s -- expected format is "01-23-45-67" for addresses and "a5-02-16" for values.', k, v)
@@ -324,7 +322,7 @@ class TeachInCollection:
                 continue
 
             if profile[0] == 0xf6:
-                self._seen_rps.add(address)
+                self._seen_rps.add((address, profile))
                 # not creating entities; right now they're only logged
             elif profile[0] == 0xa5:
                 self.create_entity(address, profile)
@@ -336,7 +334,7 @@ class TeachInCollection:
         self.hass.components.persistent_notification.async_create(
                 """To make the resulting sensors persistent and remove this message, append the following lines in your <code>configuration.yaml</code> file:
                 <pre>eltako:<br />  teach-in:<br />""" +
-                "<br />".join('    "%s": "%s"' % (b2a(a).replace(' ', '-'), p) for (a, p) in self._messages) +
+                "<br />".join('    "%s": "%s"' % (a, p) for (a, p) in self._messages) +
                 """</pre>""",
                 title="New EnOcean devices detected",
                 notification_id="eltako-teach-in"
@@ -348,16 +346,28 @@ class TeachInCollection:
             self.create_entity(msg.address, msg.profile)
 
     def feed_rps(self, msg):
-        if msg.address not in self._seen_rps:
-            self._seen_rps.add(msg.address)
-            if msg.data[0] in (0x30, 0x20): # a left key
-                profile = ProfileExpression((0xf6, 0x02, 0x01, "left"))
-            elif msg.data[0] in (0x50, 0x70): # a right key
-                profile = ProfileExpression((0xf6, 0x02, 0x01, "right"))
-            else:
-                # or any other F6 profile, I'm out of heuristics here
-                profile = ProfileExpression((0xf6, 0x01, 0x01))
-            self.announce(msg.address, profile)
+        is_fallback = False
+        if msg.data[0] in (0x30, 0x20): # a left key
+            address = AddressExpression((msg.address, "left"))
+            profile = ProfileExpression((0xf6, 0x02, 0x01))
+        elif msg.data[0] in (0x50, 0x70): # a right key
+            address = AddressExpression((msg.address, "right"))
+            profile = ProfileExpression((0xf6, 0x02, 0x01))
+        else:
+            is_fallback = True
+            address = AddressExpression((msg.address, None))
+            # or any other F6 profile, I'm out of heuristics here
+            profile = ProfileExpression((0xf6, 0x01, 0x01))
+
+        seen = (address, profile) in self._seen_rps
+        if not seen and is_fallback:
+            # Don't display the fallback message if any better expression has
+            # been displayed already
+            seen = any(a[0] == address[0] for (a, p) in self._seen_rps)
+
+        if not seen:
+            self._seen_rps.add((address, profile))
+            self.announce(address, profile)
             # not creating entities; right now they're only logged
 
     def create_entity(self, address, profile):
@@ -385,13 +395,13 @@ class TeachInCollection:
         for field in eep.fields:
             entity_class = type("CustomSensor", (Entity,), {
                 "poll": False,
-                "name": "%s Sensor %s" % (field.capitalize(), b2a(address)),
-                "entity_id": "sensor.enocean.%s-%s" % (b2a(address).replace(' ', ''), field),
-                "unique_id": "sensor.enocean.%s-%s" % (b2a(address).replace(' ', ''), field),
+                "name": "%s Sensor %s" % (field.capitalize(), address),
+                "entity_id": "sensor.enocean.%s-%s" % (address, field),
+                "unique_id": "sensor.enocean.%s-%s" % (address, field),
                 "state": None,
                 "assumed_state": True,
                 "unit_of_measurement": field_to_unit.get(field, ''),
-                "state_attributes": {'enocean-address': b2a(address), 'enocean-profile': b2a(bytes(profile)).replace(' ', '-')},
+                "state_attributes": {'enocean-address': str(address), 'enocean-profile': str(profile)},
                 })
             instance = entity_class()
             self._entities.setdefault(address, {})[field] = instance

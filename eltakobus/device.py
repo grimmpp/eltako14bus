@@ -7,7 +7,7 @@ import yaml
 from .util import b2a
 from .message import *
 from .error import UnrecognizedUpdate
-from .eep import A5_38_08, A5_12_01, F6_02_01_left, F6_02_01_right
+from .eep import EEP, AddressExpression, A5_38_08, A5_12_01, F6_02_01, F6_02_02
 
 class BusObject:
     def __init__(self, response, *, bus=None):
@@ -103,28 +103,33 @@ class DimmerStyle(BusObject):
             sender = line[:4]
             function = line[5]
             if function == 32:
-                return sender
+                return AddressExpression((sender, None))
         return None
 
     async def ensure_direct_command_address(self):
         # Choosing (0, 0, 0, address) because that's where they send from --
         # but in EltakoWrapped messages. So this address should, for other
         # purposes, be free.
-        source_address = bytes((0, 0, 0, self.address))
+        source_address = AddressExpression((bytes((0, 0, 0, self.address)), None))
         await self.ensure_programmed(source_address, A5_38_08)
         self._explicitly_configured_command_address = source_address
 
-    async def ensure_programmed(self, source, profile):
+    async def ensure_programmed(self, source: AddressExpression, profile: EEP):
         if profile is A5_38_08:
+            a = source.plain_address()
             # programmed as function 32, 1s ramp speed (0 seems not to mean "instant")
-            expected_line = source + bytes((0, 32, 1, 0))
-        elif profile is F6_02_01_left:
-            # programmed as function 3, key is 5 for left. Last bytes set to
-            # 1,0 as by the PCT
-            expected_line = source + bytes((5, 3, 1, 0))
-        elif profile is F6_02_01_right:
-            # key 6 for right, rest as above
-            expected_line = source + bytes((6, 3, 1, 0))
+            expected_line = a + bytes((0, 32, 1, 0))
+        elif profile is F6_02_01:
+            a, discriminator = source
+            if discriminator == 'left':
+                # programmed as function 3, key is 5 for left. Last bytes set to
+                # 1,0 as by the PCT
+                expected_line = a + bytes((5, 3, 1, 0))
+            elif discriminator == 'right':
+                # key 6 for right, rest as above
+                expected_line = a + bytes((6, 3, 1, 0))
+            else:
+                raise ValueError("Unknown discriminator on address %s" % (source,))
         else:
             raise ValueError("It is unknown how this profile could be programmed in.")
 
@@ -146,6 +151,7 @@ class DimmerStyle(BusObject):
         sender = await self.find_direct_command_address()
         if sender is None:
             raise RuntimeError("Can't send without any configured universal remote")
+        sender = sender.plain_address()
 
         dim = max(min(int(dim), 255), 0)
         total_ramp_time = max(min(int(total_ramp_time), 255), 1)
@@ -192,6 +198,7 @@ class DimmerStyle(BusObject):
         print("Reading out input programming")
         sender = await self.find_direct_command_address()
         if sender is not None:
+            sender = sender.plain_address()
             dimming = min(random.randint(0, 10) ** 2 + random.randint(0, 3), 100)
             print("I'e found a programmed universal dimmer state input, sending value %d"%dimming)
             await self.set_state(dimming)
@@ -218,8 +225,8 @@ class FSR14(BusObject):
     _explicitly_configured_command_address = {}
 
     async def find_direct_command_address(self, channel):
-        """Find RPS telegram details (sender, (db0 to turn off, db0 to turn
-        on)) to send to switch the given channel"""
+        """Find RPS telegram details (as an AddressExpression with left or
+        right as discriminator) to send to switch the given channel"""
 
         if channel in self._explicitly_configured_command_address:
             return self._explicitly_configured_command_address[channel]
@@ -235,15 +242,16 @@ class FSR14(BusObject):
             if channels != target_bitset:
                 continue
 
-            db0_for_switching = { # (function, key) to (off, on)
-                    (3, 6): (0x70, 0x50), # directional buttons enable on down, right keys
-                    (3, 5): (0x30, 0x10), # directional buttons enable on down, left keys
-                    (2, 6): (0x50, 0x70), # directional buttons enable on up, right keys
-                    (2, 5): (0x10, 0x30), # directional buttons enable on up, left keys
+            known_functions = { # (function, key) to (EEP, discriminator)
+                    (3, 6): (F6_02_01, "right"), # directional buttons enable on down, right keys
+                    (3, 5): (F6_02_01, "left"), # directional buttons enable on down, left keys
+                    (2, 6): (F6_02_02, "right"), # directional buttons enable on up, right keys
+                    (2, 5): (F6_02_02, "left"), # directional buttons enable on up, left keys
                     }
-            db0 = db0_for_switching.get((function, key))
-            if db0 is not None:
-                return sender, db0
+            eep, discriminator = known_functions.get((function, key), (None, None))
+            # Not trying to do anything of F6_02_02 -- the "direct commands" we use are F6_02_01 ones.
+            if eep is F6_02_01:
+                return AddressExpression((sender, discriminator))
         return None, None
 
     async def ensure_direct_command_addresses(self):
@@ -251,17 +259,21 @@ class FSR14(BusObject):
         # but in EltakoWrapped messages. So this address should, for other
         # purposes, be free.
         for subchannel in range(self.size):
-            source_address = bytes((0, 0, 0, self.address + subchannel))
-            await self.ensure_programmed(subchannel, source_address, F6_02_01_left)
-            self._explicitly_configured_command_address[subchannel] = (source_address, (0x30, 0x10))
+            source_address = AddressExpression((bytes((0, 0, 0, self.address + subchannel)), "left"))
+            await self.ensure_programmed(subchannel, source_address, F6_02_01)
+            self._explicitly_configured_command_address[subchannel] = source_address
 
-    async def ensure_programmed(self, subchannel, source, profile):
-        if profile is F6_02_01_left:
-            # programmed as function 3, key is 5 for left
-            expected_line = source + bytes((5, 3, 1 << subchannel, 0))
-        elif profile is F6_02_01_right:
-            # programmed as function 3, key is 6 for right
-            expected_line = source + bytes((6, 3, 1 << subchannel, 0))
+    async def ensure_programmed(self, subchannel, source: AddressExpression, profile: EEP):
+        if profile is F6_02_01:
+            a, discriminator = source
+            if discriminator == "left":
+                # programmed as function 3, key is 5 for left
+                expected_line = a + bytes((5, 3, 1 << subchannel, 0))
+            elif discriminator == 'right':
+                # programmed as function 3, key is 6 for right
+                expected_line = a + bytes((6, 3, 1 << subchannel, 0))
+            else:
+                raise ValueError("Unknown discriminator on address %s" % (source,))
         else:
             raise ValueError("It is unknown how this profile could be programmed in.")
 
@@ -283,8 +295,11 @@ class FSR14(BusObject):
         if command is None:
             raise RuntimeError("Can't send without any configured universal remote")
 
-        sender, db0s = command
-        db0 = db0s[state]
+        sender, discriminator = command
+        if discriminator == 'left':
+            db0 = (0x30, 0x10)[state]
+        elif discriminator == 'right':
+            db0 = (0x70, 0x50)[state]
 
         await self.bus.send(ESP2Message(b"\x0b\x05" + bytes([db0]) + b"\0\0\0" + sender + b"\30"))
 
