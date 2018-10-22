@@ -116,6 +116,10 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
                     self.log.debug("Echo detected on the line, enabling suppression")
                 else:
                     self.log.debug("No echo detected on the line")
+                    # In some Python versions, the wait_for'd await_bufferlevel
+                    # is not cancelled in time. Avoiding the race condition
+                    # until that's further investigated or obsolete.
+                    await asyncio.sleep(0.3)
             except Exception as e:
                 if conn_made:
                     self.conn_made.set_exception(e)
