@@ -3,7 +3,7 @@ import setuptools
 
 setuptools.setup(
     name="eltakobus",
-    version="0.0.2",
+    version="0.0.3",
     author="chrysn",
     author_email="chrysn@fsfe.org",
     description="Library for participating in the Eltako Series 14 RS485 bus",
