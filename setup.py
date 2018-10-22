@@ -9,6 +9,10 @@ setuptools.setup(
     description="Library for participating in the Eltako Series 14 RS485 bus",
     url="https://gitlab.com/chrysn/eltakobus",
     packages=setuptools.find_packages(),
+    extras_require={
+        'serial': ['pyserial_asyncio', 'pyserial >= 3.4'],
+        'coap': ['aiocoap == 0.4a1'],
+        },
     classifiers=[
         "Programming Language :: Python :: 3",
     ],
