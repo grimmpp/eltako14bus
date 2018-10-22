@@ -222,7 +222,9 @@ class FUD14(DimmerStyle):
 
 
 class FSR14(BusObject):
-    _explicitly_configured_command_address = {}
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._explicitly_configured_command_address = {}
 
     async def find_direct_command_address(self, channel):
         """Find RPS telegram details (as an AddressExpression with left or
