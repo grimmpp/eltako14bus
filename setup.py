@@ -12,6 +12,8 @@ setuptools.setup(
     extras_require={
         'serial': ['pyserial_asyncio', 'pyserial >= 3.4'],
         'coap': ['aiocoap == 0.4a1'],
+        # Not usable yet as it's not exported via an entry point
+        'eltakotool': ['pyyaml', 'pyxdg'],
         },
     classifiers=[
         "Programming Language :: Python :: 3",
