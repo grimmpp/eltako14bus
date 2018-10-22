@@ -441,7 +441,7 @@ class FSG14_1_10V(DimmerStyle):
     size = 1
 
 class FGW14_USB(BusObject):
-    discovery_name = (0x04, 0xfe)
+    discovery_name = bytes((0x04, 0xfe))
     size = 1
 
 
