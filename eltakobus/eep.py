@@ -117,6 +117,9 @@ class A5_04_02(TempHumSensor): min = -20; max = 60
 
 class MeterReading(EEP):
     """Base for the A5-12 subtypes"""
+
+    fields = property(lambda self: [(i, self.cum) for i in range(16)] + [(i, self.cur) for i in range(16)])
+
     @classmethod
     def decode(cls, data):
         value = (data[0] << 16) + (data[1] << 8) + data[2]
