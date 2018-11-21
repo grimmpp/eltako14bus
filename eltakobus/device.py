@@ -220,6 +220,10 @@ class FUD14(DimmerStyle):
     size = 1
     discovery_name = bytes((0x04, 0x04))
 
+class FUD14_800W(DimmerStyle):
+    size = 1
+    discovery_name = bytes((0x04, 0x05))
+
 
 class FSR14(BusObject):
     def __init__(self, *args, **kwargs):
@@ -447,7 +451,7 @@ class FGW14_USB(BusObject):
     size = 1
 
 
-known_objects = [FAM14, FUD14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A, FSG14_1_10V, FGW14_USB]
+known_objects = [FAM14, FUD14, FUD14_800W, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A, FSG14_1_10V, FGW14_USB]
 # sorted so the first match of (discovery name is a prefix, size matches) can be used
 sorted_known_objects = sorted(known_objects, key=lambda o: len(o.discovery_name) + 0.5 * (o.size is not None), reverse=True)
 
