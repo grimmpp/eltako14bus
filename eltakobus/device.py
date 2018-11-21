@@ -512,8 +512,20 @@ class FGW14_USB(BusObject):
     discovery_name = bytes((0x04, 0xfe))
     size = 1
 
+class FDG14(BusObject):
+    discovery_name = bytes((0x04, 0x34))
+    size = 16
 
-known_objects = [FAM14, FUD14, FUD14_800W, FSB14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A, FSG14_1_10V, FGW14_USB]
+    # Known oddities: Announces with 0e byte at payload[3] of the
+    # EltakoDiscoveryReply.
+    #
+    # It also reports as a device at offset +8, probably for compatibility with
+    # FAMs that don't know of the address expansion trick. Enumeration might
+    # find this odd when trying to read its memory (but enumeration that's not
+    # only there for debugging should skip ahead by size anyway, and not run
+    # into this).
+
+known_objects = [FAM14, FUD14, FUD14_800W, FSB14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A, FSG14_1_10V, FGW14_USB, FDG14]
 # sorted so the first match of (discovery name is a prefix, size matches) can be used
 sorted_known_objects = sorted(known_objects, key=lambda o: len(o.discovery_name) + 0.5 * (o.size is not None), reverse=True)
 

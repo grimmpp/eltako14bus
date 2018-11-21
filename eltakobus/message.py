@@ -343,14 +343,31 @@ class EltakoDiscoveryReply(EltakoMessage):
         eltakomessage = super().parse(data)
         if eltakomessage.org != cls.org or eltakomessage.is_request != cls.is_request or eltakomessage.address != cls.address:
             raise ParseError("This is not an EltakoDiscoveryReply")
-        try:
-            is_fam = {0x00: True, 0x08: False}[eltakomessage.payload[3]]
-        except KeyError:
+
+        classifierbyte = eltakomessage.payload[3]
+        if classifierbyte == 0x00:
+            is_fam = True
+            double_size = False
+        elif classifierbyte == 0x08:
+            is_fam = False
+            double_size = False
+        elif classifierbyte == 0x0e:
+            # Quite odd a situation, so far only seen on FDG14
+            is_fam = False
+            double_size = True
+        else:
             raise ParseError("Assumed fixed part 00 or 08 not present (found %02x)"%eltakomessage.payload[3])
+
         reported_address = eltakomessage.payload[0]
         reported_size = eltakomessage.payload[1]
         memory_size = eltakomessage.payload[2]
         model = eltakomessage.payload[4:8]
+
+        if double_size:
+            reported_size *= 2
+            if model != bytes((0x04, 0x34, 0x41, 0x00)):
+                raise ParseError("Odd 0e byte (where 00 or 08 would be consistent with the rest of the ecosystem) found on something else than a FDG14, please verify whether 0e actually means 'this device is actually twice as large on the bus as it annouces'.")
+
         return EltakoDiscoveryReply(reported_address, reported_size, memory_size, model, is_fam)
 
     def __repr__(self):
