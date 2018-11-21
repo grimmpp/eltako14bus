@@ -93,50 +93,61 @@ class DimmerStyle(BusObject):
     behave the same way in the known areas as that -- all GUIs options in the
     PCT tool even look the same."""
 
-    _explicitly_configured_command_address = None
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._explicitly_configured_command_address = {}
 
-    async def find_direct_command_address(self):
-        if self._explicitly_configured_command_address is not None:
+    async def find_direct_command_address(self, channel):
+        """Find a GVFS source address (an AddressExpression) that can configure
+        the given subchannel"""
+        if channel in self._explicitly_configured_command_address:
             # Taking this as a shortcut allows things to work smoothly even if
             # a group-addressed A5_38_08 is present early in the configuration
-            return self._explicitly_configured_command_address
-        for memory_id in range(12, 128):
+            return self._explicitly_configured_command_address[channel]
+        for memory_id in range(*self.programmable_dimmer):
             line = await self.read_mem_line(memory_id)
             sender = line[:4]
             function = line[5]
-            if function == 32:
+            line_channel = line[6]
+            if function == 32 and line_channel == channel:
                 return AddressExpression((sender, None))
         return None
 
-    async def ensure_direct_command_address(self):
+    async def ensure_direct_command_addresses(self):
         # Choosing (0, 0, 0, address) because that's where they send from --
         # but in EltakoWrapped messages. So this address should, for other
         # purposes, be free.
-        source_address = AddressExpression((bytes((0, 0, 0, self.address)), None))
-        await self.ensure_programmed(source_address, A5_38_08)
-        self._explicitly_configured_command_address = source_address
+        for subchannel in range(self.size):
+            source_address = AddressExpression((bytes((0, 0, 0, self.address + subchannel)), None))
+            await self.ensure_programmed(subchannel, source_address, A5_38_08)
+            self._explicitly_configured_command_address[subchannel] = source_address
 
-    async def ensure_programmed(self, source: AddressExpression, profile: EEP):
+    async def ensure_programmed(self, subchannel, source: AddressExpression, profile: EEP):
+        if not self.has_subchannels:
+            # In a FUD14 and similar, the subchannel field is a ramp speed (and
+            # 0 seems not to mean "instant")
+            subchannel = 1
+
         if profile is A5_38_08:
             a = source.plain_address()
-            # programmed as function 32, 1s ramp speed (0 seems not to mean "instant")
-            expected_line = a + bytes((0, 32, 1, 0))
+            # programmed as function 32, subchannel may be ramp speed
+            expected_line = a + bytes((0, 32, subchannel, 0))
         elif profile is F6_02_01:
             a, discriminator = source
             if discriminator == 'left':
                 # programmed as function 3, key is 5 for left. Last bytes set to
                 # 1,0 as by the PCT
-                expected_line = a + bytes((5, 3, 1, 0))
+                expected_line = a + bytes((5, 3, subchannel, 0))
             elif discriminator == 'right':
                 # key 6 for right, rest as above
-                expected_line = a + bytes((6, 3, 1, 0))
+                expected_line = a + bytes((6, 3, subchannel, 0))
             else:
                 raise ValueError("Unknown discriminator on address %s" % (source,))
         else:
             raise ValueError("It is unknown how this profile could be programmed in.")
 
         first_empty = None
-        for memory_id in range(12, 128):
+        for memory_id in range(*self.programmable_dimmer):
             line = await self.read_mem_line(memory_id)
             if line == expected_line:
                 self.bus.log.debug("%s: Found programming for profile %s in line %d", self, profile, memory_id)
@@ -148,9 +159,9 @@ class DimmerStyle(BusObject):
         self.bus.log.info("%s: Writing programming for profile %s in line %d", self, profile, first_empty)
         await self.write_mem_line(first_empty, expected_line)
 
-    async def set_state(self, dim, total_ramp_time=0):
+    async def set_state(self, channel, dim, total_ramp_time=0):
         """Send a telegram to set the dimming state to dim (from 0 to 255). Total ramp time is the the time in seconds """
-        sender = await self.find_direct_command_address()
+        sender = await self.find_direct_command_address(channel)
         if sender is None:
             raise RuntimeError("Can't send without any configured universal remote")
         sender = sender.plain_address()
@@ -169,7 +180,8 @@ class DimmerStyle(BusObject):
             except ParseError:
                 raise UnrecognizedUpdate("Not a 4BS update: %s" % msg)
 
-        if msg.address != bytes((0, 0, 0, self.address)):
+        subchannel = msg.address[3] - self.address
+        if subchannel < 0 or subchannel >= self.size or any(msg.address[:3]):
             raise UnrecognizedUpdate("4BS not originating from this device")
 
         # parsing this as A5-38-08 telegram
@@ -182,6 +194,7 @@ class DimmerStyle(BusObject):
             raise UnrecognizedUpdate("Odd set bits for dim value %s: 0x%02x" % (msg.data[1], msg.data[3]))
 
         return {
+                "channel": subchannel,
                 "dim": msg.data[1], # The dim value is reported in 0..100 range, even though the db2 byte says absolute.
                 "ramping_speed": msg.data[2],
                 }
@@ -198,7 +211,7 @@ class DimmerStyle(BusObject):
         print("Ramping speed is %ds to 100%%"%parsed['ramping_speed'])
 
         print("Reading out input programming")
-        sender = await self.find_direct_command_address()
+        sender = await self.find_direct_command_address(0)
         if sender is not None:
             sender = sender.plain_address()
             dimming = min(random.randint(0, 10) ** 2 + random.randint(0, 3), 100)
@@ -222,9 +235,15 @@ class FUD14(DimmerStyle):
     size = 1
     discovery_name = bytes((0x04, 0x04))
 
+    programmable_dimmer = (12, 128)
+    has_subchannels = False
+
 class FUD14_800W(DimmerStyle):
     size = 1
     discovery_name = bytes((0x04, 0x05))
+
+    programmable_dimmer = (12, 128)
+    has_subchannels = False
 
 
 class HasProgrammableRPS:
@@ -444,6 +463,35 @@ class FSB14(BusObject, HasProgrammableRPS):
             # model and known timing parameters
             pass
 
+    async def show_off(self):
+        await super().show_off()
+
+        response = await self.bus.exchange(EltakoBusUnlock())
+        print("Unlocked:", response)
+
+        await asyncio.sleep(10)
+
+        print("Moving down")
+        sender = bytes((0, 0, 0, 9))
+        # 30 = up for the taught in left side "open up", 10 = down
+        msg = RPSMessage(sender, status=0x30, data=bytes((0x10,)), outgoing=True)
+        print(msg, msg.serialize().hex())
+        await self.bus.send(msg)
+
+        while True:
+            msg = await self.bus.received.get()
+            msg = prettify(msg)
+            if isinstance(msg, EltakoPoll):
+                continue
+
+            if (isinstance(msg, EltakoWrapped4BS) or isinstance(msg, EltakoWrappedRPS)) and msg.address == bytes((0, 0, 0, self.address)): # channel 1
+                print(msg)
+                try:
+                    interpreted = self.interpret_status_update(msg)
+                    print(interpreted)
+                except Exception as e:
+                    print("Something went wrong", repr(e), e)
+
 class F3Z14D(BusObject):
     discovery_name = bytes((0x04, 0x67))
     size = 3
@@ -508,13 +556,19 @@ class FSG14_1_10V(DimmerStyle):
     discovery_name = bytes((0x04, 0x07))
     size = 1
 
+    programmable_dimmer = (12, 128)
+    has_subchannels = False
+
 class FGW14_USB(BusObject):
     discovery_name = bytes((0x04, 0xfe))
     size = 1
 
-class FDG14(BusObject):
+class FDG14(DimmerStyle):
     discovery_name = bytes((0x04, 0x34))
     size = 16
+
+    programmable_dimmer = (14, 128)
+    has_subchannels = True
 
     # Known oddities: Announces with 0e byte at payload[3] of the
     # EltakoDiscoveryReply.
