@@ -11,6 +11,8 @@ from .eep import EEP, AddressExpression, A5_38_08, A5_12_01, F6_02_01, F6_02_02
 
 class BusObject:
     def __init__(self, response, *, bus=None):
+        super().__init__()
+
         self.discovery_response = response
         if self.discovery_response.reported_size != self.size:
             # won't happen with the default size implementation, but another class may give a constant here
@@ -225,7 +227,13 @@ class FUD14_800W(DimmerStyle):
     discovery_name = bytes((0x04, 0x05))
 
 
-class FSR14(BusObject):
+class HasProgrammableRPS:
+    """Mix-in for being programmable with RPS buttons, especially own configured commands
+
+    This can be mixed in to any bus object that has a range of programmable
+    slots that follow the FSR14 function group 2 style.
+    """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._explicitly_configured_command_address = {}
@@ -238,7 +246,7 @@ class FSR14(BusObject):
             return self._explicitly_configured_command_address[channel]
 
         target_bitset = 1 << channel
-        for memory_id in range(12, 128):
+        for memory_id in range(*self.programmable_rps):
             line = await self.read_mem_line(memory_id)
             sender = line[:4]
             function = line[5]
@@ -284,7 +292,7 @@ class FSR14(BusObject):
             raise ValueError("It is unknown how this profile could be programmed in.")
 
         first_empty = None
-        for memory_id in range(12, 128):
+        for memory_id in range(*self.programmable_rps):
             line = await self.read_mem_line(memory_id)
             if line == expected_line:
                 self.bus.log.debug("%s: Found programming for subchannel %s and profile %s in line %d", self, subchannel, profile, memory_id)
@@ -308,6 +316,9 @@ class FSR14(BusObject):
             db0 = (0x70, 0x50)[state]
 
         await self.bus.send(ESP2Message(b"\x0b\x05" + bytes([db0]) + b"\0\0\0" + sender + b"\30"))
+
+class FSR14(BusObject, HasProgrammableRPS):
+    programmable_rps = (12, 128)
 
     async def show_off(self):
         await super().show_off()
@@ -382,9 +393,11 @@ class F4SR14_LED(FSR14):
     discovery_name = bytes((0x04, 0x09))
     size = 4
 
-class FSB14(BusObject):
+class FSB14(BusObject, HasProgrammableRPS):
     size = 2
     discovery_name = bytes((0x04, 0x06))
+
+    programmable_rps = (17, 128)
 
     @classmethod
     def annotate_memory(cls, mem):
