@@ -525,6 +525,25 @@ class FDG14(BusObject):
     # only there for debugging should skip ahead by size anyway, and not run
     # into this).
 
+    @classmethod
+    def annotate_memory(cls, mem):
+        return {
+                2: MemoryFileStartOfSectionComment("16 dimmer values (0-100, or 101 for 'MASK') for light scene 1"),
+                4: MemoryFileStartOfSectionComment("16 dimmer values for light scene 2"),
+                6: MemoryFileStartOfSectionComment("16 dimmer values for light scene 3"),
+                8: MemoryFileStartOfSectionComment("16 dimmer values for light scene 4"),
+
+                # FIXME: Find out where "send confirmation as dimmer telegram"
+                # is stored, and provide a way to ensure that
+
+                14: [
+                    MemoryFileStartOfSectionComment("function group 1"),
+                    MemoryFileNibbleExplanationComment(
+                         "AD DR ES S, KY FN CH ??",
+                         "key (5 = left, 6 = right), function (eg. 32 = A5-38-08), ch = channel"),
+                    ],
+                }
+
 known_objects = [FAM14, FUD14, FUD14_800W, FSB14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A, FSG14_1_10V, FGW14_USB, FDG14]
 # sorted so the first match of (discovery name is a prefix, size matches) can be used
 sorted_known_objects = sorted(known_objects, key=lambda o: len(o.discovery_name) + 0.5 * (o.size is not None), reverse=True)
