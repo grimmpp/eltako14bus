@@ -115,6 +115,19 @@ class TempHumSensor(EEP):
 class A5_04_01(TempHumSensor): min = 0; max = 40
 class A5_04_02(TempHumSensor): min = -20; max = 60
 
+class A5_08_01(EEP):
+    fields = ['voltage', 'illumination', 'temperature', 'pir', 'occupancy']
+
+    @classmethod
+    def decode(cls, data):
+        return {
+                'voltage': 5.1 * data[0] / 255,
+                'illumination': 510 * data[1] / 255,
+                'temperature': 51 * data[2] / 255,
+                'pir': not bool(data[3] & 0x02),
+                'occupancy': not bool(data[3] & 0x01),
+                }
+
 class MeterReading(EEP):
     """Base for the A5-12 subtypes"""
 
