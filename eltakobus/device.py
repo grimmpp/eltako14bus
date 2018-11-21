@@ -382,6 +382,55 @@ class F4SR14_LED(FSR14):
     discovery_name = bytes((0x04, 0x09))
     size = 4
 
+class FSB14(BusObject):
+    size = 2
+    discovery_name = bytes((0x04, 0x06))
+
+    @classmethod
+    def annotate_memory(cls, mem):
+        return {
+                17: [MemoryFileStartOfSectionComment("function group 2"),
+                    MemoryFileNibbleExplanationComment(
+                         "AD DR ES S, KY FN CH ??",
+                         "key (5 = left, 6 = right), function (3 = bottom open, 2 = upper open), ch = affected channels as bits, ?? = maybe driving time (00 for switches)"),
+                    ]
+                }
+
+    def interpret_status_update(self, msg):
+        if not isinstance(msg, EltakoWrapped4BS) and not isinstance(msg, EltakoWrappedRPS):
+            try:
+                msg = EltakoWrapped4BS.parse(msg.serialize())
+            except ParseError:
+                try:
+                    msg = EltakoWrappedRPS.parse(msg.serialize())
+                except ParseError:
+                    raise UnrecognizedUpdate("Not recognizable update: %s" % msg)
+
+        try:
+            channel = {
+                    bytes((0, 0, 0, self.address)): 0,
+                    bytes((0, 0, 0, self.address + 1)): 1,
+                    }[msg.address]
+        except KeyError:
+            raise UnrecognizedUpdate("Address not recognized")
+
+        if isinstance(msg, EltakoWrappedRPS):
+            states = {
+                    0x01: "moving up",
+                    0x02: "moving down",
+                    0x70: "top",
+                    0x50: "bottom",
+                    }
+            try:
+                return (channel, states[msg.data[0]])
+            except KeyError:
+                raise UnrecognizedUpdate("Unknown data value in RPS: %s" % msg.data[0])
+        else:
+            # They are known but not implemented, as their information content
+            # is only moved time, which is not usable without a persistent
+            # model and known timing parameters
+            pass
+
 class F3Z14D(BusObject):
     discovery_name = bytes((0x04, 0x67))
     size = 3
@@ -451,7 +500,7 @@ class FGW14_USB(BusObject):
     size = 1
 
 
-known_objects = [FAM14, FUD14, FUD14_800W, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A, FSG14_1_10V, FGW14_USB]
+known_objects = [FAM14, FUD14, FUD14_800W, FSB14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A, FSG14_1_10V, FGW14_USB]
 # sorted so the first match of (discovery name is a prefix, size matches) can be used
 sorted_known_objects = sorted(known_objects, key=lambda o: len(o.discovery_name) + 0.5 * (o.size is not None), reverse=True)
 
