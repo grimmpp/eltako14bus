@@ -351,6 +351,10 @@ class EltakoDiscoveryReply(EltakoMessage):
         elif classifierbyte == 0x08:
             is_fam = False
             double_size = False
+        elif classifierbyte == 0x0c:
+            # Quite odd a situation, so far only seen on FUD14 - Firmware V4.2
+            is_fam = False
+            double_size = False
         elif classifierbyte == 0x0e:
             # Quite odd a situation, so far only seen on FDG14
             is_fam = False
