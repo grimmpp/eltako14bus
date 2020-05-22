@@ -21,5 +21,6 @@ setuptools.setup(
     tests_require=list(set(sum(extras_require.values(), []))),
     classifiers=[
         "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)",
     ],
 )
