@@ -69,7 +69,7 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
             self.transport.write(echotest)
 
             try:
-                await asyncio.wait_for(self.await_bufferlevel(len(echotest)), timeout=0.2, loop=self._loop)
+                await asyncio.wait_for(self.await_bufferlevel(len(echotest)), timeout=0.2)
             except asyncio.TimeoutError:
                 continue
 
@@ -210,7 +210,7 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
             await self.send(request)
             try:
                 # FIXME this timeout is rather arbitrary
-                return await asyncio.wait_for(match, timeout=1, loop=self._loop)
+                return await asyncio.wait_for(match, timeout=1)
             except asyncio.TimeoutError:
                 if responsetype is EltakoTimeout:
                     return EltakoTimeout()
