@@ -25,14 +25,16 @@ class BusObject:
     def programming(self):
         return self._programming
 
-    def set_programming(self, value):
+    @programming.setter
+    def programming(self, value):
         self._programming = value
         
     @property
     def eep(self):
         return self._eep
 
-    def set_eep(self, value):
+    @eep.setter
+    def eep(self, value):
         self._eep = value
 
     def __repr__(self):
