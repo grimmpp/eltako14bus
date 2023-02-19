@@ -155,18 +155,6 @@ class FSR14(BusObject, HasProgrammableRPS):
 
         return {"state": state}
 
-class FSR14_1x(FSR14):
-    pass
-
-class FSR14_2x(FSR14):
-    pass
-
-class FSR14_4x(FSR14):
-    pass
-
-class F4SR14_LED(FSR14):
-    pass
-
 class FSB14(BusObject, HasProgrammableRPS):
     programmable_rps = (17, 128)
 
@@ -256,7 +244,7 @@ class Sensor(BusObject):
 
         return self.eep.decode(msg.data)
 
-known_objects = [FAM14, FUD14, FUD14_800W, FSB14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A, FSG14_1_10V, FGW14_USB, FDG14, Sensor]
+known_objects = [FAM14, FUD14, FUD14_800W, FSB14, FSR14, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A, FSG14_1_10V, FGW14_USB, FDG14, Sensor]
 
 async def create_busobject(bus, address, type):
     for o in known_objects:
