@@ -13,7 +13,7 @@ class BusObject:
     def __init__(self, address, *, bus=None):
         super().__init__()
 
-        self.address = address
+        self._address = address
         self.bus = bus
         self._programming = {}
 
