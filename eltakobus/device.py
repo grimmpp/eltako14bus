@@ -51,6 +51,7 @@ class BusObject:
         raise UnrecognizedUpdate("Device is not expected to send updates")
 
 class FAM14(BusObject):
+    pass
 
 class DimmerStyle(BusObject):
     """Devices that work just the same as a FUD14. FSG14_1_10V appears to
@@ -155,12 +156,16 @@ class FSR14(BusObject, HasProgrammableRPS):
         return {"state": state}
 
 class FSR14_1x(FSR14):
+    pass
 
 class FSR14_2x(FSR14):
+    pass
 
 class FSR14_4x(FSR14):
+    pass
 
 class F4SR14_LED(FSR14):
+    pass
 
 class FSB14(BusObject, HasProgrammableRPS):
     programmable_rps = (17, 128)
@@ -194,14 +199,19 @@ class FSB14(BusObject, HasProgrammableRPS):
 
 
 class F3Z14D(BusObject):
+    pass
 
 class FMZ14(BusObject):
+    pass
 
 class FWG14MS(BusObject):
+    pass
 
 class FSU14(BusObject):
+    pass
 
 class FMSR14(BusObject):
+    pass
 
 class FWZ14_65A(BusObject):
     def interpret_status_update(self, msg):
@@ -225,6 +235,7 @@ class FSG14_1_10V(DimmerStyle):
     programmable_dimmer = (12, 128)
 
 class FGW14_USB(BusObject):
+    pass
 
 class FDG14(DimmerStyle):
     programmable_dimmer = (14, 128)
