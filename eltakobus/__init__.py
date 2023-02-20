@@ -11,7 +11,3 @@ from .error import *
 from .message import *
 from .bus import *
 from .serial import *
-from .coap import *
-from .device import *
-from . import locking
-from . import eep
