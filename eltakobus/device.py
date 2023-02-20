@@ -7,7 +7,7 @@ import yaml
 from .util import b2a
 from .message import *
 from .error import UnrecognizedUpdate
-from .eep import EEP, AddressExpression, A5_38_08, A5_12_01, F6_02_01, F6_02_02
+from .eep import EEP, AddressExpression, A5_38_08, A5_12_01, F6_02_01, F6_02_02, A5_13_01
 
 class BusObject:
     def __init__(self, address, *, bus=None):
@@ -49,9 +49,6 @@ class BusObject:
         exception if it expects no updates or does not know what to make of
         it."""
         raise UnrecognizedUpdate("Device is not expected to send updates")
-
-class FAM14(BusObject):
-    pass
 
 class DimmerStyle(BusObject):
     """Devices that work just the same as a FUD14. FSG14_1_10V appears to
@@ -101,12 +98,6 @@ class DimmerStyle(BusObject):
                 "ramping_speed": msg.data[2],
                 }
 
-class FUD14(DimmerStyle):
-    programmable_dimmer = (12, 128)
-
-class FUD14_800W(DimmerStyle):
-    programmable_dimmer = (12, 128)
-
 class HasProgrammableRPS:
     """Mix-in for being programmable with RPS buttons, especially own configured commands
 
@@ -136,9 +127,9 @@ class HasProgrammableRPS:
 
         await self.bus.send(ESP2Message(b"\x0b\x05" + bytes([db0]) + b"\0\0\0" + sender + b"\30"))
 
-class FSR14(BusObject, HasProgrammableRPS):
+class RelayStyle(BusObject, HasProgrammableRPS):
     programmable_rps = (12, 128)
-
+    
     def interpret_status_update(self, msg):
         if not isinstance(msg, EltakoWrappedRPS):
             try:
@@ -155,7 +146,7 @@ class FSR14(BusObject, HasProgrammableRPS):
 
         return {"state": state}
 
-class FSB14(BusObject, HasProgrammableRPS):
+class CoverStyle(BusObject, HasProgrammableRPS):
     programmable_rps = (17, 128)
 
     def interpret_status_update(self, msg):
@@ -185,6 +176,36 @@ class FSB14(BusObject, HasProgrammableRPS):
             # model and known timing parameters
             pass
 
+class SensorStyle(BusObject):
+    def interpret_status_update(self, msg):
+        if self.eep is None:
+            raise UnrecognizedUpdate("The EEP was not set for this device. Please do so in the configuration.")
+
+        return self.eep.decode(msg.data)
+
+class WeatherSensorStyle(SensorStyle):
+    _eep = A5_13_01
+
+class ElectricityMeterSensorStyle(SensorStyle):
+    _eep = A5_12_01
+    
+class GasMeterSensor(SensorStyle):
+    _eep = A5_12_02
+
+class WaterMeterSensor(SensorStyle):
+    _eep = A5_12_02
+
+class FAM14(BusObject):
+    pass
+
+class FSR14(RelayStyle):
+    pass
+
+class FUD14(DimmerStyle):
+    programmable_dimmer = (12, 128)
+
+class FSB14(CoverStyle):
+    pass
 
 class F3Z14D(BusObject):
     pass
@@ -192,7 +213,7 @@ class F3Z14D(BusObject):
 class FMZ14(BusObject):
     pass
 
-class FWG14MS(BusObject):
+class FWG14MS(WeatherSensorStyle):
     pass
 
 class FSU14(BusObject):
@@ -201,28 +222,13 @@ class FSU14(BusObject):
 class FMSR14(BusObject):
     pass
 
-class FWZ14_65A(BusObject):
-    def interpret_status_update(self, msg):
-        if not isinstance(msg, EltakoWrapped4BS):
-            try:
-                msg = EltakoWrapped4BS.parse(msg.serialize())
-            except ParseError:
-                raise UnrecognizedUpdate("Not a 4BS update: %s" % msg)
+class FWZ14(ElectricityMeterSensorStyle):
+    pass
 
-        if msg.address != bytes((0, 0, 0, self.address)):
-            raise UnrecognizedUpdate("4BS not originating from this device")
-
-        if msg.data[3] == 0x8f:
-            # Device is sending its serial number, which is better obtained
-            # from memory
-            return {}
-
-        return A5_12_01.decode(msg.data)
-
-class FSG14_1_10V(DimmerStyle):
+class FSG14(DimmerStyle):
     programmable_dimmer = (12, 128)
 
-class FGW14_USB(BusObject):
+class FGW14(BusObject):
     pass
 
 class FDG14(DimmerStyle):
@@ -237,18 +243,11 @@ class FDG14(DimmerStyle):
     # only there for debugging should skip ahead by size anyway, and not run
     # into this).
 
-class Sensor(BusObject):
-    def interpret_status_update(self, msg):
-        if self.eep is None:
-            raise UnrecognizedUpdate("The EEP was not set for this device. Please do so in the configuration.")
-
-        return self.eep.decode(msg.data)
-
-known_objects = [FAM14, FUD14, FUD14_800W, FSB14, FSR14, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A, FSG14_1_10V, FGW14_USB, FDG14, Sensor]
+known_objects = [FAM14, FUD14, FSB14, FSR14, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14, FSG14, FGW14, FDG14, Sensor]
 
 async def create_busobject(bus, address, type):
     for o in known_objects:
-        if o.__name__ == type:
+        if o.__name__.lower() == type.lower():
             return o(address, bus=bus)
     else:
         return BusObject(address, bus=bus)
