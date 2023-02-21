@@ -223,6 +223,30 @@ class EltakoWrappedRPS(ESP2Message):
     def __repr__(self):
         return "<%s from %s, status %02x, data %s>" % (type(self).__name__, b2a(self.address), self.status, b2a(self.data))
 
+class EltakoWrapped1BS(ESP2Message):
+    """Like EltakoWrappedRPS, but the 1BS variety."""
+
+    org = 0x06
+
+    def __init__(self, address, status, data):
+        self.address = address
+        self.status = status
+        self.data = data
+
+    @classmethod
+    def parse(cls, data):
+        eltakomessage = EltakoMessage.parse(data)
+        if eltakomessage.org != cls.org or eltakomessage.is_request != False:
+            raise ParseError("This is not an %s" % (cls.__name__,))
+        if any(eltakomessage.payload[1:4]):
+            raise ParseError("RPS message should not carry db1..3")
+        return cls(address=eltakomessage.payload[4:8], status=eltakomessage.address, data=eltakomessage.payload[0:1])
+
+    body = property(lambda self: EltakoMessage(org=self.org, address=self.status, payload=self.data + bytes((0, 0, 0)) + self.address, is_request=False).body)
+
+    def __repr__(self):
+        return "<%s from %s, status %02x, data %s>" % (type(self).__name__, b2a(self.address), self.status, b2a(self.data))
+
 class EltakoWrapped4BS(ESP2Message):
     """Like EltakoWrappedRPS, but the 4BS variety."""
 
