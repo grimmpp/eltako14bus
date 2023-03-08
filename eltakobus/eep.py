@@ -313,6 +313,26 @@ class _CentralCommand(EEP):
         self._dimming = dimming
 
 class CentralCommandSwitching:
+    @property
+    def time(self):
+        return self._time
+
+    @property
+    def learn_button(self):
+        return self._learn_button
+
+    @property
+    def lock(self):
+        return self._lock
+
+    @property
+    def delay_or_duration(self):
+        return self._delay_or_duration
+
+    @property
+    def switching_command(self):
+        return self._switching_command
+
     def __init__(self, time, learn_button, lock, delay_or_duration, switching_command):
         self._time = time
         self._learn_button = learn_button
@@ -321,6 +341,30 @@ class CentralCommandSwitching:
         self._switching_command = switching_command
 
 class CentralCommandDimming:
+    @property
+    def dimming_value(self):
+        return self._dimming_value
+
+    @property
+    def ramping_time(self):
+        return self._ramping_time
+
+    @property
+    def learn_button(self):
+        return self._learn_button
+
+    @property
+    def dimming_range(self):
+        return self._dimming_range
+
+    @property
+    def store_final_value(self):
+        return self._store_final_value
+
+    @property
+    def switching_command(self):
+        return self._switching_command
+
     def __init__(self, dimming_value, ramping_time, learn_button, dimming_range, store_final_value, switching_command):
         self._dimming_value = dimming_value
         self._ramping_time = ramping_time
