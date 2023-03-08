@@ -11,3 +11,4 @@ from .error import *
 from .message import *
 from .bus import *
 from .serial import *
+from .eep import *
