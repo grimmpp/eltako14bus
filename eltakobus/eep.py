@@ -16,7 +16,7 @@ class EEP:
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         
-        if re.match("^([0-9a-zA-Z]{2})-([0-9a-zA-Z]{2})-([0-9a-zA-Z]{2})$", cls.__name__):
+        if re.match("^([0-9a-zA-Z]{2})_([0-9a-zA-Z]{2})_([0-9a-zA-Z]{2})$", cls.__name__):
             cls.eep_string = cls.__name__.replace("_", "-")
             cls.__sublasses_by_string[cls.eep_string] = cls
 
