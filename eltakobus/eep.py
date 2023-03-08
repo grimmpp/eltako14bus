@@ -44,7 +44,7 @@ class _RockerSwitch(EEP):
         rocker_second_action = (msg.data[0] & 0x0E) >> 1
         second_action = msg.data[0] & 0x01
         
-        return cls.__init__(rocker_first_action, energy_bow, rocker_second_action, second_action)
+        return cls(rocker_first_action, energy_bow, rocker_second_action, second_action)
 
     def encode_message(self, address):
         data = bytes(0)
@@ -98,7 +98,7 @@ class _WindowHandle(EEP):
         
         movement = msg.data[0]
         
-        return cls.__init__(movement)
+        return cls(movement)
 
     def encode_message(self, address):
         data = bytes(0)
@@ -131,7 +131,7 @@ class _SingleInputContact(EEP):
         learn_button = (msg.data[0] & 0x08) >> 3
         contact = msg.data[0] & 0x01
         
-        return cls.__init__(learn_button, contact)
+        return cls(learn_button, contact)
 
     def encode_message(self, address):
         data = bytes(0)
@@ -175,7 +175,7 @@ class _LightTemperatureOccupancySensor(EEP):
         illumination = cls.illu_min + ((msg.data[1] / 255.0) * (cls.illu_max - cls.illu_min))
         supply_voltage = cls.volt_min + ((msg.data[0] / 255.0) * (cls.volt_max - cls.volt_min))
         
-        return cls.__init__(supply_voltage, illumination, temperature, learn_button, pir_status, occupancy_button)
+        return cls(supply_voltage, illumination, temperature, learn_button, pir_status, occupancy_button)
 
     def encode_message(self, address):
         data = bytes(0, 0, 0, 0)
@@ -254,7 +254,7 @@ class _CentralCommand(EEP):
             
             switching = _CentralCommandSwitching(time, learn_button, lock, delay_or_duration, switching_command)
             
-            return cls.__init__(command=command, switching=switching)
+            return cls(command=command, switching=switching)
         elif command == 0x02:
             dimming_value = msg.data[1]
             ramping_time = msg.data[2]
@@ -265,7 +265,7 @@ class _CentralCommand(EEP):
             
             dimming = _CentralCommandDimming(dimming_value, ramping_time, learn_button, dimming_range, store_final_value, switching_command)
             
-            return cls.__init__(command=command, dimming=dimming)
+            return cls(command=command, dimming=dimming)
         else:
             raise NotImplementedError
 
@@ -344,7 +344,7 @@ class _EltakoSwitchingCommand(EEP):
         
         state = (msg.data[0] & 0x20) >> 5
         
-        return cls.__init__(state)
+        return cls(state)
 
     def encode_message(self, address):
         data = bytes(0)
@@ -387,14 +387,14 @@ class _WeatherStation(EEP):
             day_night = (msg.data[3] & 0x04) >> 2
             rain_indication = (msg.data[3] & 0x02) >> 1
             
-            return cls.__init__(identifier=identifier, learn_button=learn_button, dawn_sensor=dawn_sensor, temperature=temperature, wind_speed=wind_speed, day_night=day_night, rain_indication=rain_indication)
+            return cls(identifier=identifier, learn_button=learn_button, dawn_sensor=dawn_sensor, temperature=temperature, wind_speed=wind_speed, day_night=day_night, rain_indication=rain_indication)
         elif identifier == 0x02:
             sun_west = (msg.data[0] / 255.0) * 150.0
             sun_south = (msg.data[1] / 255.0) * 150.0
             sun_east = (msg.data[2] / 255.0) * 150.0
             hemisphere = (msg.data[3] & 0x04) >> 2
             
-            return cls.__init__(identifier=identifier, learn_button=learn_button, sun_west=sun_west, sun_south=sun_south, sun_east=sun_east, hemisphere=hemisphere)
+            return cls(identifier=identifier, learn_button=learn_button, sun_west=sun_west, sun_south=sun_south, sun_east=sun_east, hemisphere=hemisphere)
         else:
             raise NotImplementedError
 
@@ -499,7 +499,7 @@ class _AutomatedMeterReading(EEP):
         data_type = (msg.data[3] & 0x04) >> 2
         divisor = msg.data[3] & 0x03
         
-        return cls.__init__(state)
+        return cls(state)
 
     def encode_message(self, address):
         data = bytes(0, 0, 0, 0)
