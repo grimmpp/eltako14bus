@@ -47,7 +47,7 @@ class _RockerSwitch(EEP):
         return cls(rocker_first_action, energy_bow, rocker_second_action, second_action)
 
     def encode_message(self, address):
-        data = bytes(0)
+        data = bytes((0))
         data[0] = data[0] | self.second_action
         data[0] = data[0] | (self.rocker_second_action << 1)
         data[0] = data[0] | (self.energy_bow << 4)
@@ -101,7 +101,7 @@ class _WindowHandle(EEP):
         return cls(movement)
 
     def encode_message(self, address):
-        data = bytes(0)
+        data = bytes((0))
         data[0] = self.movement
         
         status = 0x20
@@ -134,7 +134,7 @@ class _SingleInputContact(EEP):
         return cls(learn_button, contact)
 
     def encode_message(self, address):
-        data = bytes(0)
+        data = bytes((0))
         data[0] = data[0] | self.contact
         data[0] = data[0] | (self.learn_button << 3)
 
@@ -178,7 +178,7 @@ class _LightTemperatureOccupancySensor(EEP):
         return cls(supply_voltage, illumination, temperature, learn_button, pir_status, occupancy_button)
 
     def encode_message(self, address):
-        data = bytes(0, 0, 0, 0)
+        data = bytes((0, 0, 0, 0))
         
         data[3] = data[3] | self.occupancy_button
         data[3] = data[3] | (self.pir_status << 1)
@@ -270,7 +270,7 @@ class _CentralCommand(EEP):
             raise NotImplementedError
 
     def encode_message(self, address):
-        data = bytes(0, 0, 0, 0)
+        data = bytes((0, 0, 0, 0))
         
         data[0] = self.command
 
@@ -347,7 +347,7 @@ class _EltakoSwitchingCommand(EEP):
         return cls(state)
 
     def encode_message(self, address):
-        data = bytes(0)
+        data = bytes((0))
         data[0] = 0x50 | (self.state << 5)
         
         status = 0x30
@@ -399,7 +399,7 @@ class _WeatherStation(EEP):
             raise NotImplementedError
 
     def encode_message(self, address):
-        data = bytes(0, 0, 0, 0)
+        data = bytes((0, 0, 0, 0))
         
         if self.identifier == 0x01:
             data[3] = data[3] | (self.rain_indication << 1)
@@ -502,7 +502,7 @@ class _AutomatedMeterReading(EEP):
         return cls(state)
 
     def encode_message(self, address):
-        data = bytes(0, 0, 0, 0)
+        data = bytes((0, 0, 0, 0))
         
         data[0] = (self.meter_reading & 0xFF0000) >> 16
         data[1] = (self.meter_reading & 0x00FF00) >> 8
