@@ -184,9 +184,9 @@ class _LightTemperatureOccupancySensor(EEP):
         data[3] = data[3] | (self.pir_status << 1)
         data[3] = data[3] | (self.learn_button << 3)
         
-        data[2] = ((self.temperature - cls.temp_min) / (cls.temp_max - cls.temp_min)) * 255.0
-        data[1] = ((self.illumination - cls.illu_min) / (cls.illu_max - cls.illu_min)) * 255.0
-        data[0] = ((self.supply_voltage - cls.volt_min) / (cls.volt_max - cls.volt_min)) * 255.0
+        data[2] = int(((self.temperature - cls.temp_min) / (cls.temp_max - cls.temp_min)) * 255.0)
+        data[1] = int(((self.illumination - cls.illu_min) / (cls.illu_max - cls.illu_min)) * 255.0)
+        data[0] = int(((self.supply_voltage - cls.volt_min) / (cls.volt_max - cls.volt_min)) * 255.0)
 
         status = 0x00
         
@@ -279,8 +279,8 @@ class _CentralCommand(EEP):
             data[3] = data[3] | (self.switching.delay_or_duration << 1)
             data[3] = data[3] | (self.switching.lock << 2)
             data[3] = data[3] | (self.switching.learn_button << 3)
-            data[2] = (self.switching.time * 10.0) & 0xFF
-            data[1] = (self.switching.time * 10.0) >> 8
+            data[2] = int(self.switching.time * 10) & 0xFF
+            data[1] = int(self.switching.time * 10) >> 8
         elif self.command == 0x02:
             data[3] = self.dimming.switching_command
             data[3] = data[3] | (self.dimming.store_final_value << 1)
@@ -449,15 +449,15 @@ class _WeatherStation(EEP):
             data[3] = data[3] | (self.rain_indication << 1)
             data[3] = data[3] | (self.day_night << 2)
             data[3] = data[3] | (self.learn_button << 3)
-            data[2] = (self.wind_speed / 70.0) * 255.0
-            data[1] = ((self.temperature - cls.temp_min) / (cls.temp_max - cls.temp_min)) * 255.0
-            data[0] = (self.dawn_sensor / 999.0) * 255.0
+            data[2] = int((self.wind_speed / 70.0) * 255.0)
+            data[1] = int(((self.temperature - cls.temp_min) / (cls.temp_max - cls.temp_min)) * 255.0)
+            data[0] = int((self.dawn_sensor / 999.0) * 255.0)
         elif self.identifier == 0x02:
             data[3] = data[3] | self.hemisphere
             data[3] = data[3] | (self.learn_button << 3)
-            data[2] = (self.sun_east / 150.0) * 255.0
-            data[1] = (self.sun_south / 150.0) * 255.0
-            data[0] = (self.sun_west / 150.0) * 255.0
+            data[2] = int((self.sun_east / 150.0) * 255.0)
+            data[1] = int((self.sun_south / 150.0) * 255.0)
+            data[0] = int((self.sun_west / 150.0) * 255.0)
         else:
             raise NotImplementedError
 
