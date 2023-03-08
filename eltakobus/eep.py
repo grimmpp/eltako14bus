@@ -252,7 +252,7 @@ class _CentralCommand(EEP):
             delay_or_duration = (msg.data[3] & 0x02) >> 1
             switching_command = msg.data[3] & 0x01
             
-            switching = _CentralCommandSwitching(time, learn_button, lock, delay_or_duration, switching_command)
+            switching = CentralCommandSwitching(time, learn_button, lock, delay_or_duration, switching_command)
             
             return cls(command=command, switching=switching)
         elif command == 0x02:
@@ -263,7 +263,7 @@ class _CentralCommand(EEP):
             store_final_value = (msg.data[3] & 0x02) >> 1
             switching_command = msg.data[3] & 0x01
             
-            dimming = _CentralCommandDimming(dimming_value, ramping_time, learn_button, dimming_range, store_final_value, switching_command)
+            dimming = CentralCommandDimming(dimming_value, ramping_time, learn_button, dimming_range, store_final_value, switching_command)
             
             return cls(command=command, dimming=dimming)
         else:
