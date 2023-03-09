@@ -543,7 +543,7 @@ class _AutomatedMeterReading(EEP):
         data_type = (msg.data[3] & 0x04) >> 2
         divisor = msg.data[3] & 0x03
         
-        return cls(state)
+        return cls(meter_reading, measurement_channel, learn_button, data_type, divisor)
 
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
