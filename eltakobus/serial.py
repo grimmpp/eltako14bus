@@ -26,6 +26,7 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
         self.log = log or logging.getLogger('eltakobus.serial')
 
         self.transport = None
+        self.transport_future = None
 
         self._buffer = b''
         # a single future waiting for the buffer to reach a certain level. Only
@@ -35,7 +36,7 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
         self._buffer_request_level = 0
 
     def connection_made(self, transport):
-        self.transport.set_result(transport)
+        self.transport_future.set_result(transport)
 
     def data_received(self, d):
         self._buffer += d
@@ -45,6 +46,8 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
 
     def eof_received(self):
         self.transport = None
+        self.transport_future = None
+        
         if self._buffer_request is not None:
             self._buffer_request.set_exception(EOFError)
 
@@ -97,16 +100,17 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
     async def run(self, loop, *, conn_made=None):
         self._loop = loop
 
-        if self.transport is not None:
+        if self.transport is not None or self.transport_future is not None:
             raise RuntimeError("Serial interface run twice")
-        self.transport = asyncio.Future()
+        self.transport_future = asyncio.Future()
         await serial_asyncio.create_serial_connection(
                 loop,
                 protocol_factory=lambda: self,
                 url=self._filename,
                 baudrate=57600
                 )
-        self.transport = await self.transport
+        self.transport = await self.transport_future
+        self.transport_future = None
 
         if self.suppress_echo is None:
             try:
@@ -220,6 +224,8 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
             self._hook = None
 
     async def send(self, request):
+        self.log.debug("Writing to transport: %s", self.transport)
+        
         serialized = request.serialize()
         if self.suppress_echo:
             self._suppress.append((time.time(), serialized))
