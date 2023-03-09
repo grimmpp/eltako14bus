@@ -10,7 +10,7 @@ extras_require = {
 
 setuptools.setup(
     name="eltakobus",
-    version="0.0.22",
+    version="0.0.23",
     author="chrysn",
     author_email="chrysn@fsfe.org",
     description="Library for participating in the Eltako Series 14 RS485 bus",
