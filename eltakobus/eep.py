@@ -608,7 +608,7 @@ class _EltakoShutterStatus(EEP):
             return cls(state=state)
         elif msg.org == 0x07:
             time = msg.data[0] << 8 | msg.data[1]
-            direction = data[2]
+            direction = msg.data[2]
             return cls(time=time, direction=direction)
         else:
             raise WrongOrgError
@@ -662,8 +662,8 @@ class _EltakoShutterCommand(EEP):
         if msg.org != 0x07:
             raise WrongOrgError
         
-        time = data[1]
-        command = data[2]
+        time = msg.data[1]
+        command = msg.data[2]
         learn_button = (msg.data[3] & 0x08) >> 3
 
         return cls(time, command, learn_button)
