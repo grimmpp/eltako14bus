@@ -595,3 +595,106 @@ class A5_12_02(_AutomatedMeterReading):
 
 class A5_12_03(_AutomatedMeterReading):
     """Automated Meter Reading - Water"""
+
+# ======================================
+# MARK: - Eltako Shutter Status
+# ======================================
+
+class _EltakoShutterStatus(EEP):
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org == 0x05:
+            state = msg.data[0]
+            return cls(state=state)
+        elif msg.org == 0x07:
+            time = msg.data[0] << 8 | msg.data[1]
+            direction = data[2]
+            return cls(time=time, direction=direction)
+        else:
+            raise WrongOrgError
+
+    def encode_message(self, address):
+        if state is not None:
+            data = bytearray([0])
+            data[0] = self.state
+            
+            status = 0x30
+            
+            return RPSMessage(address, status, data, True)
+        else:
+            data = bytearray([0, 0, 0, 0])
+            data[0] = self.time >> 8
+            data[1] = self.time & 0xFF
+            data[2] = self.direction
+            data[3] = 0x0A
+            
+            status = 0x00
+
+            return Regular4BSMessage(address, status, data, True)
+
+    @property
+    def state(self):
+        return self._state
+        
+    @property
+    def time(self):
+        return self._time
+
+    @property
+    def direction(self):
+        return self._direction
+
+    def __init__(self, state=None, time=None, direction=None):
+        self._state = state
+        self._time = time
+        self._direction = direction
+
+class G5_3F_7F(_EltakoShutterStatus):
+    """Eltako Shutters"""
+
+# ======================================
+# MARK: - Eltako Shutter Command
+# ======================================
+
+class _EltakoShutterCommand(EEP):
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        
+        time = data[1]
+        command = data[2]
+        learn_button = (msg.data[3] & 0x08) >> 3
+
+        return cls(time, command, learn_button)
+
+    def encode_message(self, address):
+        data = bytearray([0, 0, 0, 0])
+        
+        data[1] = self.time
+        data[2] = self.command
+        data[3] = data[3] | (self.learn_button << 4)
+
+        status = 0x00
+        
+        return Regular4BSMessage(address, status, data, True)
+
+    @property
+    def time(self):
+        return self._time
+
+    @property
+    def command(self):
+        return self._command
+
+    @property
+    def learn_button(self):
+        return self._learn_button
+
+    def __init__(self, time, command, learn_button):
+        self._time = time
+        self._command = command
+        self._learn_button = learn_button
+
+class H5_3F_7F(_EltakoShutterCommand):
+    """Eltako Shutter Command"""
