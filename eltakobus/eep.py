@@ -673,7 +673,7 @@ class _EltakoShutterCommand(EEP):
         
         data[1] = self.time
         data[2] = self.command
-        data[3] = data[3] | (self.learn_button << 4)
+        data[3] = data[3] | (self.learn_button << 3)
 
         status = 0x00
         
