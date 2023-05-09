@@ -18,6 +18,7 @@ class BusObject:
             # won't happen with the default size implementation, but another class may give a constant here
             raise ValueError("Unexpected size (got %d, expected %d for %r)"%(self.discovery_response.reported_size, self.size, self))
         self.bus = bus
+        self.memory_size = response.memory_size
         self.memory = [None] * response.memory_size
 
     @property
@@ -130,7 +131,7 @@ class DimmerStyle(BusObject):
 
         if profile is A5_38_08:
             a = source.plain_address()
-            # programmed as function 32, subchannel may be ramp speed
+            # programmed as function 32 (GFVS house automation), subchannel may be ramp speed
             expected_line = a + bytes((0, 32, subchannel, 0))
         elif profile is F6_02_01:
             a, discriminator = source
@@ -234,16 +235,21 @@ class DimmerStyle(BusObject):
 class FUD14(DimmerStyle):
     size = 1
     discovery_name = bytes((0x04, 0x04))
-
-    programmable_dimmer = (12, 128)
     has_subchannels = False
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.programmable_dimmer = (12, self.memory_size)
+
 
 class FUD14_800W(DimmerStyle):
     size = 1
     discovery_name = bytes((0x04, 0x05))
-
-    programmable_dimmer = (12, 128)
     has_subchannels = False
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.programmable_dimmer = (12, self.memory_size)
 
 
 class HasProgrammableRPS:
@@ -307,6 +313,10 @@ class HasProgrammableRPS:
                 expected_line = a + bytes((6, 3, 1 << subchannel, 0))
             else:
                 raise ValueError("Unknown discriminator on address %s" % (source,))
+        elif profile is A5_38_08:
+            a, discriminator = source
+            # 51 GFVS = House Automation SW
+            expected_line = a + bytes((0, 51, 1 << subchannel, 0))
         else:
             raise ValueError("It is unknown how this profile could be programmed in.")
 
@@ -337,7 +347,10 @@ class HasProgrammableRPS:
         await self.bus.send(ESP2Message(b"\x0b\x05" + bytes([db0]) + b"\0\0\0" + sender + b"\30"))
 
 class FSR14(BusObject, HasProgrammableRPS):
-    programmable_rps = (12, 128)
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.programmable_rps = (12, self.memory_size)
 
     async def show_off(self):
         await super().show_off()
@@ -416,7 +429,9 @@ class FSB14(BusObject, HasProgrammableRPS):
     size = 2
     discovery_name = bytes((0x04, 0x06))
 
-    programmable_rps = (17, 128)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.programmable_rps = (17, self.memory_size)
 
     @classmethod
     def annotate_memory(cls, mem):
@@ -555,9 +570,11 @@ class FWZ14_65A(BusObject):
 class FSG14_1_10V(DimmerStyle):
     discovery_name = bytes((0x04, 0x07))
     size = 1
-
-    programmable_dimmer = (12, 128)
     has_subchannels = False
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.programmable_rps = (12, self.memory_size)
 
 class FGW14_USB(BusObject):
     discovery_name = bytes((0x04, 0xfe))
@@ -566,9 +583,11 @@ class FGW14_USB(BusObject):
 class FDG14(DimmerStyle):
     discovery_name = bytes((0x04, 0x34))
     size = 16
-
-    programmable_dimmer = (14, 128)
     has_subchannels = True
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.programmable_dimmer = (14, self.memory_size)
 
     # Known oddities: Announces with 0e byte at payload[3] of the
     # EltakoDiscoveryReply.
