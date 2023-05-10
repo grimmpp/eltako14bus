@@ -240,6 +240,7 @@ class FUD14(DimmerStyle):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.programmable_dimmer = (12, self.memory_size)
+        self.gfvs_code = 31
 
 
 class FUD14_800W(DimmerStyle):
@@ -250,6 +251,7 @@ class FUD14_800W(DimmerStyle):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.programmable_dimmer = (12, self.memory_size)
+        self.gfvs_code = 32
 
 
 class HasProgrammableRPS:
@@ -258,6 +260,8 @@ class HasProgrammableRPS:
     This can be mixed in to any bus object that has a range of programmable
     slots that follow the FSR14 function group 2 style.
     """
+
+    gfvs_code = 51  # default function to be used by home automation
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -316,7 +320,7 @@ class HasProgrammableRPS:
         elif profile is A5_38_08:
             a, discriminator = source
             # 51 GFVS = House Automation SW
-            expected_line = a + bytes((0, 51, 1 << subchannel, 0))
+            expected_line = a + bytes((0, self.gfvs_code, 1 << subchannel, 0))
         else:
             raise ValueError("It is unknown how this profile could be programmed in.")
 
@@ -351,6 +355,7 @@ class FSR14(BusObject, HasProgrammableRPS):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.programmable_rps = (12, self.memory_size)
+        self.gfvs_code = 51
 
     async def show_off(self):
         await super().show_off()
@@ -432,6 +437,7 @@ class FSB14(BusObject, HasProgrammableRPS):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.programmable_rps = (17, self.memory_size)
+        self.gfvs_code = 31
 
     @classmethod
     def annotate_memory(cls, mem):
@@ -575,6 +581,7 @@ class FSG14_1_10V(DimmerStyle):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.programmable_rps = (12, self.memory_size)
+        self.gfvs_code = 32
 
 class FGW14_USB(BusObject):
     discovery_name = bytes((0x04, 0xfe))
@@ -588,6 +595,7 @@ class FDG14(DimmerStyle):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.programmable_dimmer = (14, self.memory_size)
+        self.gfvs_code = 32
 
     # Known oddities: Announces with 0e byte at payload[3] of the
     # EltakoDiscoveryReply.
