@@ -1,6 +1,6 @@
-def b2a(rawdata):
+def b2a(rawdata, separator=' '):
     # like binascii.b2a_hex, but directly to unicode for printing, and with nice spacing
-    return " ".join("%02x"%b for b in rawdata)
+    return separator.join("%02x"%b for b in rawdata)
 
 def combine_hex(data):
     ''' Combine list of integer values to one big integer '''
