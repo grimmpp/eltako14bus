@@ -1,10 +1,25 @@
 import asyncio
+import functools
 
 from .message import *
 from .error import *
 
 LOCKED = "Bus was successfully locked as acknowledged by a FAM"
 PROBABLY_LOCKED = "No response after 10 repetitions, assuming that no FAM is present on the bus"
+
+def buslocked(f):
+    """Wraps a coroutine inside a bus locking and (finally) bus unlocking. The
+    coroutine must take a bus as its first argument."""
+    @functools.wraps(f)
+    async def new_f(bus, *args, **kwargs):
+        try:
+            print("Sending a lock command onto the bus; its reply should tell us whether there's a FAM in the game.")
+            await lock_bus(bus)
+            return await f(bus, *args, **kwargs)
+        finally:
+            print("Unlocking the bus again")
+            await unlock_bus(bus)
+    return new_f
 
 async def lock_bus(bus):
     """Lock the bus. While this is being done, no other program component

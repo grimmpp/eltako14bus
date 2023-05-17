@@ -13,6 +13,7 @@ from typing import Optional
 import xdg.BaseDirectory
 
 from eltakobus import *
+from eltakobus.locking import buslocked
 
 async def enumerate_bus(bus, *, limit_ids=None):
     """Search the bus for devices, yield bus objects for every match"""
@@ -25,20 +26,6 @@ async def enumerate_bus(bus, *, limit_ids=None):
             yield await create_busobject(bus, i)
         except TimeoutError:
             continue
-
-def buslocked(f):
-    """Wraps a coroutine inside a bus locking and (finally) bus unlocking. The
-    coroutine must take a bus as its first argument."""
-    @functools.wraps(f)
-    async def new_f(bus, *args, **kwargs):
-        try:
-            print("Sending a lock command onto the bus; its reply should tell us whether there's a FAM in the game.")
-            await lock_bus(bus)
-            return await f(bus, *args, **kwargs)
-        finally:
-            print("Unlocking the bus again")
-            await unlock_bus(bus)
-    return new_f
 
 @buslocked
 async def enumerate_cmd(bus):
@@ -444,14 +431,14 @@ def main():
     if opts.rawuri is None and opts.eltakobus is None:
         raise p.error("Autodiscovery is not yet implemented, please give --rawuri argument or an --eltakobus.")
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
 
     if opts.rawuri:
         context = loop.run_until_complete(aiocoap.Context.create_client_context())
         bus = CoAPInterface(context, opts.rawuri)
         cache_rawpart = opts.rawuri.replace('/', '-')
     if opts.eltakobus:
-        bus_ready = asyncio.Future()
+        bus_ready = asyncio.Future(loop=loop)
         bus = RS485SerialInterface(opts.eltakobus)
         asyncio.ensure_future(bus.run(loop, conn_made=bus_ready), loop=loop)
         loop.run_until_complete(bus_ready)
@@ -502,7 +489,7 @@ def main():
     else:
         raise RuntimeError("Additional command declared but not implemented.")
 
-    maintask = asyncio.Task(maintask)
+    maintask = asyncio.Task(maintask, loop=loop)
 
     try:
         result = loop.run_until_complete(maintask)
