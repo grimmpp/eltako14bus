@@ -4,10 +4,10 @@ import binascii
 import random
 import yaml
 
-from .util import b2a
+from .util import b2a, AddressExpression
 from .message import *
 from .error import UnrecognizedUpdate
-from .eep import EEP, AddressExpression, A5_38_08, A5_12_01, F6_02_01, F6_02_02
+from .eep import EEP, A5_38_08, A5_12_01, F6_02_01, F6_02_02
 
 class BusObject:
     def __init__(self, response, *, bus=None):

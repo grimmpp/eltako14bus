@@ -10,3 +10,7 @@ class BadFAMMode1(Exception):
     """Raised during locking if a FAM present on the bus scans through the
     available address space continuously (ie. is in mode 1) and thus blocks all
     interaction with the bus."""
+class NotImplementedError(Exception):
+    """Raised when the subclass did not override the function."""
+class WrongOrgError(Exception):
+    """Raised when the org of the message is not the same as the expected org."""
