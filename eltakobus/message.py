@@ -14,7 +14,7 @@ def prettify(message):
     classes = [EltakoBusLock, EltakoBusUnlock, EltakoDiscoveryRequest,
             EltakoDiscoveryReply, EltakoMemoryRequest, EltakoMemoryResponse,
             EltakoTimeout, EltakoPoll, EltakoPollForced, EltakoWrappedRPS,
-            EltakoWrapped4BS, RPSMessage, Regular4BSMessage, TeachIn4BSMessage2,
+            EltakoWrapped4BS, RPSMessage, Regular1BSMessage, Regular4BSMessage, TeachIn4BSMessage2,
             EltakoMessage]
 
     for c in classes:
