@@ -12,6 +12,15 @@
             "args": ["--eltakobus", "/dev/ttyUSB0", "listen"],
             "console": "integratedTerminal",
             "justMyCode": true
+        },
+        {
+            "name": "eltakotool dump",
+            "type": "python",
+            "request": "launch",
+            "program": "eltakotool.py",
+            "args": ["--eltakobus", "/dev/ttyUSB0", "dump"],
+            "console": "integratedTerminal",
+            "justMyCode": true
         }
     ]
 }
