@@ -1,4 +1,4 @@
-eltatakobus Python library
+Eltako14Bus Python library
 ==========================
 
 This repository contains a library and some tools for interacting with the Eltako Series 14 bus system,
@@ -17,7 +17,7 @@ Tools
 
 The eltakotool program shipped with it can
 do various raw interactions with the bus
-(replacing some FAM14 functionality, locking and unlocking the bus, sending arbitrary mssages)
+(replacing some FAM14 functionality, locking and unlocking the bus, sending arbitrary messages)
 as well as reading and writing the bus participants' memory
 (including verification and annotation of the memory contents).
 
@@ -35,7 +35,7 @@ which have equivalent messages (with short and long (4 byte) data, respectively)
 These messages contain some addressing information both when receiving (indicating which device sent it)
 and when sending through the transceiver (in which case the addresses need to match the address range of the transceiver, giving about 128 possible sending addresses).
 
-The Eltako protocol is losely built on the ESP2 protocol,
+The Eltako protocol is loosely built on the ESP2 protocol,
 but is used on an RS485 bus (with up to 127 participants),
 and uses several message types that are not defined in ESP2.
 
