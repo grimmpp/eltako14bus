@@ -8,17 +8,22 @@ extras_require = {
     'eltakotool': ['pyyaml', 'pyxdg'],
 }
 
+with open("README.md", "r") as fh:
+    long_description = fh.read()
+
 setuptools.setup(
     name="eltakobus",
     version="0.0.27",
-    author="chrysn",
-    author_email="chrysn@fsfe.org",
+    author="chrysn, grimmpp",
+    author_email="chrysn@fsfe.org, grimmpp14@gmail.com",
     description="Library for participating in the Eltako Series 14 RS485 bus",
     url="https://gitlab.com/chrysn/eltakobus",
     packages=setuptools.find_packages(),
     extras_require=extras_require,
     # Not that there'd be tests, but at least it fetches the right dependencies and syntax checks everything
     tests_require=list(set(sum(extras_require.values(), []))),
+    long_description_content_type="text/markdown",
+    long_description=long_description,
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)",
