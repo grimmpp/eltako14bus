@@ -528,6 +528,43 @@ class A5_13_01(_WeatherStation):
     """Weather station"""
 
 # ======================================
+# MARK: -  temperature + humidity sensor
+# ======================================
+class _TemperatureAndHumiditySensor(EEP):
+    @classmethod
+    def decode_message(cls, msg):
+        temperature = msg.data[1]
+        humidity = msg.data[2]
+
+        return cls(temperature,humidity)
+
+    def encode_message(self, address):
+        data = bytearray([0, 0, 0, 0])
+        data[0] = 0x00
+        data[1] = self.temperature
+        data[2] = self.humidity
+        data[3] = 0x00
+        
+        status = 0x00
+
+        return Regular4BSMessage(address, status, data, True)
+
+    @property
+    def temperature(self):
+        return self.temperature
+    
+    @property
+    def humidity(self):
+        return self.humidity
+    
+    def __init__(self, temperature, humidity):
+        self.temperature = temperature
+        self.humidity = humidity
+
+class A5_04_02(_TemperatureAndHumiditySensor):
+    """Temperature and Humidity Sensor"""
+
+# ======================================
 # MARK: - Automated Meter Reading
 # ======================================
 
