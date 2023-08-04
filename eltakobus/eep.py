@@ -533,6 +533,9 @@ class A5_13_01(_WeatherStation):
 class _TemperatureAndHumiditySensor(EEP):
     @classmethod
     def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        
         temperature = msg.data[1]
         humidity = msg.data[2]
 
