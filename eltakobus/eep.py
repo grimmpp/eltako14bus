@@ -551,15 +551,15 @@ class _TemperatureAndHumiditySensor(EEP):
 
     @property
     def temperature(self):
-        return self.temperature
+        return self._temperature
     
     @property
     def humidity(self):
-        return self.humidity
+        return self._humidity
     
     def __init__(self, temperature, humidity):
-        self.temperature = temperature
-        self.humidity = humidity
+        self._temperature = temperature
+        self._humidity = humidity
 
 class A5_04_02(_TemperatureAndHumiditySensor):
     """Temperature and Humidity Sensor"""
