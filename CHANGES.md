@@ -2,6 +2,9 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.0.28
+- Temperature and Humidity Sensor for EEP A5-04-02 added
+
 ## 0.0.27
 - Bug Fix - Out of Memory: Range of device memory was not fitting.
 - GFVS codes added so that automation software can use triggers in a generic manner.
