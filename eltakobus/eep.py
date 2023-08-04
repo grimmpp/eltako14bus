@@ -536,16 +536,19 @@ class _TemperatureAndHumiditySensor(EEP):
         if msg.org != 0x07:
             raise WrongOrgError
         
-        temperature = msg.data[1]
-        humidity = msg.data[2]
+        # 0 .. 100%
+        humidity = (msg.data[1] /255.0) * 100
+        # -20°C .. +60°C
+        temperature = (msg.data[2] / 255.0 ) * 80.0 - 20.0
+        
 
         return cls(temperature,humidity)
 
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
         data[0] = 0x00
-        data[1] = self.temperature
-        data[2] = self.humidity
+        data[1] = int((self.humidity / 100.0) * 255.0)
+        data[2] = int(((self.temperature + 20.0) / 80.0) * 255.0)
         data[3] = 0x00
         
         status = 0x00
