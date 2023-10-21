@@ -1,3 +1,4 @@
+from enum import Enum
 from .error import NotImplementedError, WrongOrgError
 from .message import RPSMessage, Regular1BSMessage, Regular4BSMessage
 import re
@@ -407,6 +408,64 @@ class _EltakoSwitchingCommand(EEP):
 
 class M5_38_08(_EltakoSwitchingCommand):
     """Eltako Gateway Switching - This is implemented pretty rudimentary"""
+
+
+# ======================================
+# MARK: - Heating and Cooling
+# ======================================
+
+class _HeatingCooling(EEP):
+
+    class Heater_Mode(Enum):
+        NORMAL = 0
+        STAND_BY_2_DEGREES = 1
+        NIGHT_SET_BACK_4_DEGREES = 2
+        OFF = 3
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org == 0x07:
+
+            night_setback = msg.data[0] & 0x1 == 0
+            temp = msg.data[1]/255.0*40.0
+            set_point_temp = msg.data[2]/255.0*40.0
+            d3 = msg.data[3]
+            mode = cls.Heater_Mode.NORMAL
+            if d3 == 25:
+                mode = cls.Heater_Mode.NIGHT_SET_BACK_4_DEGREES
+            elif d3 == 12:
+                mode = cls.Heater_Mode.STAND_BY_2_DEGREES
+            elif d3 == 0 & set_point_temp == 0:
+                mode = cls.Heater_Mode.OFF
+
+            return cls(mode, set_point_temp, temp, night_setback)
+        else:
+            raise WrongOrgError
+
+    @property
+    def mode(self):
+        return self._mode
+    
+    @property
+    def set_point_temp(self):
+        return self._set_point_temp
+    
+    @property
+    def temp(self):
+        return self._temp
+    
+    @property
+    def stand_by(self):
+        return self._stand_by
+
+    def __init__(self, mode: Heater_Mode, set_point_temp: int, temp: int, stand_by: bool):
+        self._mode  = mode
+        self._set_point_temp = set_point_temp
+        self._temp = temp
+        self._stand_by = stand_by
+
+class A5_10_06(_HeatingCooling):
+    """Heating and Cooling"""
 
 # ======================================
 # MARK: - Weather station
