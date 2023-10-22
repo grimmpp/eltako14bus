@@ -426,7 +426,7 @@ class _HeatingCooling(EEP):
     def decode_message(cls, msg):
         if msg.org == 0x07:
 
-            night_setback = msg.data[0] & 0x1 == 0
+            night_setback = msg.data[0] % 2 == 0
             temp = msg.data[1]/255.0*40.0
             set_point_temp = msg.data[2]/255.0*40.0
             d3 = msg.data[3]
