@@ -442,6 +442,29 @@ class _HeatingCooling(EEP):
         else:
             raise WrongOrgError
 
+    def encode_message(self, address):
+        data = bytearray([0, 0, 0, 0])
+
+        data[0] = 15
+        if self.stand_by:
+            data[0] = 14
+
+        data[1] = self.temp/40.0*255.0
+
+        data[2] = self.set_point_temp/40.0*255.0
+        
+        data[3] = 0
+        if self.mode == _HeatingCooling.Heater_Mode.NIGHT_SET_BACK_4_DEGREES:
+            data[3] = 25
+        elif self.mode == _HeatingCooling.Heater_Mode.STAND_BY_2_DEGREES:
+            data[3] = 12
+        elif self.mode == _HeatingCooling.Heater_Mode.OFF:
+            data[2] = 0
+        
+        status = 0x00
+
+        return Regular4BSMessage(address, status, data, True)
+
     @property
     def mode(self):
         return self._mode
@@ -463,6 +486,7 @@ class _HeatingCooling(EEP):
         self._set_point_temp = set_point_temp
         self._temp = temp
         self._stand_by = stand_by
+
 
 class A5_10_06(_HeatingCooling):
     """Heating and Cooling"""
