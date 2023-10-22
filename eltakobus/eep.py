@@ -435,7 +435,7 @@ class _HeatingCooling(EEP):
                 mode = cls.Heater_Mode.NIGHT_SET_BACK_4_DEGREES
             elif d3 == 12:
                 mode = cls.Heater_Mode.STAND_BY_2_DEGREES
-            elif d3 == 0 & set_point_temp == 0:
+            elif d3 == 0 and set_point_temp == 0:
                 mode = cls.Heater_Mode.OFF
 
             return cls(mode, set_point_temp, temp, night_setback)
