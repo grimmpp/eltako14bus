@@ -491,6 +491,10 @@ class _HeatingCooling(EEP):
 class A5_10_06(_HeatingCooling):
     """Heating and Cooling"""
 
+#TODO: to be implemanted
+class A5_10_12(EEP):
+    """Temperature Controller Command"""
+
 # ======================================
 # MARK: - Weather station
 # ======================================
