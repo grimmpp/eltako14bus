@@ -2,6 +2,9 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.0.39
+- Status message for temperature actor added. (A5-10-06)
+
 ## 0.0.28
 - Temperature and Humidity Sensor for EEP A5-04-02 added
 
