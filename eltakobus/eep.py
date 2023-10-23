@@ -415,6 +415,8 @@ class M5_38_08(_EltakoSwitchingCommand):
 # ======================================
 
 class _HeatingCooling(EEP):
+    min_temp = 0
+    max_temp = 40
 
     class Heater_Mode(Enum):
         NORMAL = 0
@@ -426,40 +428,41 @@ class _HeatingCooling(EEP):
     def decode_message(cls, msg):
         if msg.org == 0x07:
 
-            night_setback = msg.data[0] % 2 == 0
-            temp = msg.data[1]/255.0*40.0
-            set_point_temp = msg.data[2]/255.0*40.0
-            d3 = msg.data[3]
+            night_setback = msg.data[3] % 2 == 0
+            current_temp = (msg.data[2] / 255.0) * cls.max_temp
+            target_temp = (msg.data[1] / 255.0) * cls.max_temp
+            
             mode = cls.Heater_Mode.NORMAL
+            d3 = msg.data[0]
             if d3 == 25:
                 mode = cls.Heater_Mode.NIGHT_SET_BACK_4_DEGREES
             elif d3 == 12:
                 mode = cls.Heater_Mode.STAND_BY_2_DEGREES
-            elif d3 == 0 and set_point_temp == 0:
+            elif d3 == 0 and target_temp == 0:
                 mode = cls.Heater_Mode.OFF
 
-            return cls(mode, set_point_temp, temp, night_setback)
+            return cls(mode, target_temp, current_temp, night_setback)
         else:
             raise WrongOrgError
 
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
 
-        data[0] = 15
+        data[3] = 15
         if self.stand_by:
-            data[0] = 14
+            data[3] = 14
 
-        data[1] = self.temp/40.0*255.0
+        data[2] = self.current_temp / cls.max_temp * 255.0
 
-        data[2] = self.set_point_temp/40.0*255.0
+        data[1] = self.target_temp / cls.max_temp * 255.0
         
-        data[3] = 0
+        data[0] = 0
         if self.mode == _HeatingCooling.Heater_Mode.NIGHT_SET_BACK_4_DEGREES:
-            data[3] = 25
+            data[0] = 25
         elif self.mode == _HeatingCooling.Heater_Mode.STAND_BY_2_DEGREES:
-            data[3] = 12
+            data[0] = 12
         elif self.mode == _HeatingCooling.Heater_Mode.OFF:
-            data[2] = 0
+            data[1] = 0
         
         status = 0x00
 
@@ -470,21 +473,21 @@ class _HeatingCooling(EEP):
         return self._mode
     
     @property
-    def set_point_temp(self):
-        return self._set_point_temp
+    def target_temp(self):
+        return self._target_temp
     
     @property
-    def temp(self):
-        return self._temp
+    def current_temp(self):
+        return self._current_temp
     
     @property
     def stand_by(self):
         return self._stand_by
 
-    def __init__(self, mode: Heater_Mode, set_point_temp: int, temp: int, stand_by: bool):
+    def __init__(self, mode: Heater_Mode, target_temp: float, current_temp: float, stand_by: bool):
         self._mode  = mode
-        self._set_point_temp = set_point_temp
-        self._temp = temp
+        self._target_temp = target_temp
+        self._current_temp = current_temp
         self._stand_by = stand_by
 
 
