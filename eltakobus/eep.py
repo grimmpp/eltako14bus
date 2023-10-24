@@ -494,18 +494,6 @@ class _HeatingCooling(EEP):
 class A5_10_06(_HeatingCooling):
     """Heating and Cooling"""
 
-class _HeatingCoolingControl(EEP):
-
-    @classmethod
-    def decode_message(cls, msg):
-        if msg.org == 0x07:
-
-
-    @property
-    def mode(self):
-        return self._target_
-
-
 class A5_10_12(_HeatingCoolingControl):
     """Temperature Controller Command"""
 
