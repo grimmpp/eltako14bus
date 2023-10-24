@@ -452,9 +452,9 @@ class _HeatingCooling(EEP):
         if self.stand_by:
             data[3] = 14
 
-        data[2] = self.current_temp / cls.max_temp * 255.0
+        data[2] = self.current_temp / max_temp * 255.0
 
-        data[1] = self.target_temp / cls.max_temp * 255.0
+        data[1] = self.target_temp / max_temp * 255.0
         
         data[0] = 0
         if self.mode == _HeatingCooling.Heater_Mode.NIGHT_SET_BACK_4_DEGREES:
