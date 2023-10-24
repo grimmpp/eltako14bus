@@ -494,7 +494,7 @@ class _HeatingCooling(EEP):
 class A5_10_06(_HeatingCooling):
     """Heating and Cooling"""
 
-class A5_10_12(_HeatingCoolingControl):
+class A5_10_12(EEP):
     """Temperature Controller Command"""
 
 # ======================================
