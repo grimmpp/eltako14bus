@@ -452,9 +452,9 @@ class _HeatingCooling(EEP):
         if self.stand_by:
             data[3] = 14
 
-        data[2] = self.current_temp / max_temp * 255.0
+        data[2] = self.current_temp / self.max_temp * 255.0
 
-        data[1] = self.target_temp / max_temp * 255.0
+        data[1] = self.target_temp / self.max_temp * 255.0
         
         data[0] = 0
         if self.mode == _HeatingCooling.Heater_Mode.NIGHT_SET_BACK_4_DEGREES:
@@ -494,8 +494,19 @@ class _HeatingCooling(EEP):
 class A5_10_06(_HeatingCooling):
     """Heating and Cooling"""
 
-#TODO: to be implemanted
-class A5_10_12(EEP):
+class _HeatingCoolingControl(EEP):
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org == 0x07:
+
+
+    @property
+    def mode(self):
+        return self._target_
+
+
+class A5_10_12(_HeatingCoolingControl):
     """Temperature Controller Command"""
 
 # ======================================
