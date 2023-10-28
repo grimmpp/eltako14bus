@@ -84,9 +84,32 @@ class FAM14(BusObject):
     @classmethod
     def annotate_memory(cls, mem):
         return {
-                1: MemoryFileNibbleExplanationComment(
+            1: MemoryFileNibbleExplanationComment(
                     "AD DR ES S, -- -- -- --",
                     "Base address")
+        }
+                
+
+class FAE14SSR(BusObject):
+    size = 2
+    discovery_name = bytes((0x04, 0x16))
+
+    @classmethod
+    def annotate_memory(cls, mem):
+        return {
+                1: MemoryFileNibbleExplanationComment(
+                    "AD DR ES S, -- -- -- --", "Base address"),
+                4: MemoryFileNibbleExplanationComment(
+                    "-- RV -- -- -- -- -- --",
+                    "RV = return value, 1.bit channel 1 & 2. bit channel 2 "),
+                5: MemoryFileNibbleExplanationComment(
+                    "-- -- -- -- dt dt -- --", "temp offset channel 1 & 2"),
+                7: MemoryFileNibbleExplanationComment(
+                    "a  a  hc tp hc tp  tt tt", ""),
+                8: MemoryFileStartOfSectionComment("function group 1 / Temp Sensor"),
+                10: MemoryFileStartOfSectionComment("function group 2 / Temp Controller"),
+                12: MemoryFileStartOfSectionComment("function group 3 / Smart Home SW"),
+                14: MemoryFileStartOfSectionComment("function group 3 / switches, contacts, ..."),
                 }
 
 class DimmerStyle(BusObject):
@@ -625,7 +648,7 @@ class FDG14(DimmerStyle):
                     ],
                 }
 
-known_objects = [FAM14, FUD14, FUD14_800W, FSB14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A, FSG14_1_10V, FGW14_USB, FDG14]
+known_objects = [FAM14, FUD14, FUD14_800W, FSB14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A, FSG14_1_10V, FGW14_USB, FDG14, FAE14SSR]
 # sorted so the first match of (discovery name is a prefix, size matches) can be used
 sorted_known_objects = sorted(known_objects, key=lambda o: len(o.discovery_name) + 0.5 * (o.size is not None), reverse=True)
 
