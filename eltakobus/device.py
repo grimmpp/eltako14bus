@@ -101,7 +101,7 @@ class FAE14SSR(BusObject):
                     "AD DR ES S, -- -- -- --", "Base address"),
                 4: MemoryFileNibbleExplanationComment(
                     "-- RV -- -- -- -- -- --",
-                    "RV = return value, 1.bit channel 1 & 2. bit channel 2 "),
+                    "RV = return value, 1. bit channel 1 & 2. bit channel 2 "),
                 5: MemoryFileNibbleExplanationComment(
                     "-- -- -- -- dt dt -- --", "temp offset channel 1 & 2"),
                 7: MemoryFileNibbleExplanationComment(

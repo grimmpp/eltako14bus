@@ -622,6 +622,7 @@ class A5_13_01(_WeatherStation):
 class _TemperatureAndHumiditySensor(EEP):
     temp_min = -20.0
     temp_max = 60.0
+    usr = 255.0 # unscaled range - standard = 250, eltako 255
 
     @classmethod
     def decode_message(cls, msg):
@@ -629,9 +630,9 @@ class _TemperatureAndHumiditySensor(EEP):
             raise WrongOrgError
         
         # 0 .. 100%
-        humidity = (msg.data[1] /250.0) * 100.0
+        humidity = (msg.data[1] / cls.usr) * 100.0
         # -20°C .. +60°C
-        temperature = (msg.data[2] / 250.0 ) * (cls.temp_max - cls.temp_min) + cls.temp_min
+        temperature = (msg.data[2] / cls.usr) * (cls.temp_max - cls.temp_min) + cls.temp_min
         
 
         return cls(temperature,humidity)
@@ -639,8 +640,8 @@ class _TemperatureAndHumiditySensor(EEP):
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
         data[0] = 0x00
-        data[1] = int((self.humidity / 100.0) * 250.0)
-        data[2] = int(((self.temperature + self.temp_min) / (self.temp_max - self.temp_min)) * 250.0)
+        data[1] = int((self.humidity / 100.0) * self.usr)
+        data[2] = int(((self.temperature + self.temp_min) / (self.temp_max - self.temp_min)) * self.usr)
         data[3] = 0x00
         
         status = 0x00
