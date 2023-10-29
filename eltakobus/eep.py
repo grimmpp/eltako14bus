@@ -622,7 +622,7 @@ class A5_13_01(_WeatherStation):
 class _TemperatureAndHumiditySensor(EEP):
     temp_min = -20.0
     temp_max = 60.0
-    usr = 255.0 # unscaled range - standard = 250, eltako 255
+    usr = 250.0 # unscaled range 
 
     @classmethod
     def decode_message(cls, msg):
