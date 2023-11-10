@@ -415,8 +415,9 @@ class M5_38_08(_EltakoSwitchingCommand):
 # ======================================
 
 class _HeatingCooling(EEP):
-    min_temp = 0
-    max_temp = 40
+    min_temp:float = 0
+    max_temp:float = 40
+    usr:float = 255.0 # unscaled range 
 
     class Heater_Mode(Enum):
         NORMAL = 0
@@ -429,8 +430,8 @@ class _HeatingCooling(EEP):
         if msg.org == 0x07:
 
             night_setback = msg.data[3] % 2 == 0
-            current_temp = (msg.data[2] / 255.0) * cls.max_temp
-            target_temp = (msg.data[1] / 255.0) * cls.max_temp
+            current_temp = (msg.data[2] / cls.usr) * cls.max_temp
+            target_temp = (msg.data[1] / cls.usr) * cls.max_temp
             
             mode = cls.Heater_Mode.NORMAL
             d3 = msg.data[0]
@@ -452,9 +453,9 @@ class _HeatingCooling(EEP):
         if self.stand_by:
             data[3] = 14
 
-        data[2] = int(self.current_temp / self.max_temp * 255.0)
+        data[2] = int(self.current_temp / self.max_temp * self.usr)
 
-        data[1] = int(self.target_temp / self.max_temp * 255.0)
+        data[1] = int(self.target_temp / self.max_temp * self.usr)
         
         data[0] = 0
         if self.mode == _HeatingCooling.Heater_Mode.NIGHT_SET_BACK_4_DEGREES:
@@ -494,7 +495,55 @@ class _HeatingCooling(EEP):
 class A5_10_06(_HeatingCooling):
     """Heating and Cooling"""
 
-class A5_10_12(EEP):
+class _HeatingCoolingHumidity():
+    temp_min = 0.0
+    temp_max = 40.0
+    usr = 250.0 # unscaled range 
+    usr_tt = 255.0 # unscaled range for target temperature
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        
+        target_temperature = (msg.data[0] / cls.usr) * (cls.temp_max - cls.temp_min) + cls.temp_min
+        # 0 .. 100%
+        humidity = (msg.data[1] / cls.usr) * 100.0
+        # -20°C .. +60°C
+        current_temperature = (msg.data[2] / cls.usr) * (cls.temp_max - cls.temp_min) + cls.temp_min
+        
+        return cls(current_temperature, target_temperature, humidity)
+
+    def encode_message(self, address):
+        data = bytearray([0, 0, 0, 0])
+        data[0] = int((self._target_temperature / (self.temp_max - self.temp_min)) * self.usr)
+        data[1] = int((self._humidity / 100.0) * self.usr)
+        data[2] = int((self._current_temperature / (self.temp_max - self.temp_min)) * self.usr)
+        data[3] = 8 # data telegram
+        
+        status = 0x00
+
+        return Regular4BSMessage(address, status, data, True)
+
+    @property
+    def current_temperature(self):
+        return self._current_temperature
+    
+    @property
+    def target_temperature(self):
+        return self._target_temperature
+    
+    @property
+    def humidity(self):
+        return self._humidity
+    
+    def __init__(self, current_temperature, target_temperature, humidity):
+        self._current_temperature = current_temperature
+        self._target_temperature = target_temperature
+        self._humidity = humidity
+
+
+class A5_10_12(_HeatingCoolingHumidity):
     """Temperature Controller Command"""
 
 # ======================================
