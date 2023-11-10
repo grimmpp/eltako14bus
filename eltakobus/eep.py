@@ -453,9 +453,9 @@ class _HeatingCooling(EEP):
         if self.stand_by:
             data[3] = 14
 
-        data[2] = int(self.current_temp / self.max_temp * self.usr)
+        data[2] = int(self.current_temperature / self.max_temp * self.usr)
 
-        data[1] = int(self.target_temp / self.max_temp * self.usr)
+        data[1] = int(self.target_temperature / self.max_temp * self.usr)
         
         data[0] = 0
         if self.mode == _HeatingCooling.Heater_Mode.NIGHT_SET_BACK_4_DEGREES:
@@ -474,11 +474,11 @@ class _HeatingCooling(EEP):
         return self._mode
     
     @property
-    def target_temp(self):
+    def target_temperature(self):
         return self._target_temp
     
     @property
-    def current_temp(self):
+    def current_temperature(self):
         return self._current_temp
     
     @property
@@ -495,7 +495,7 @@ class _HeatingCooling(EEP):
 class A5_10_06(_HeatingCooling):
     """Heating and Cooling"""
 
-class _HeatingCoolingHumidity():
+class _HeatingCoolingHumidity(EEP):
     temp_min = 0.0
     temp_max = 40.0
     usr = 250.0 # unscaled range 
@@ -681,7 +681,7 @@ class _TemperatureAndHumiditySensor(EEP):
         # 0 .. 100%
         humidity = (msg.data[1] / cls.usr) * 100.0
         # -20°C .. +60°C
-        temperature = (msg.data[2] / cls.usr) * (cls.temp_max - cls.temp_min) + cls.temp_min
+        temperature = ((msg.data[2] / cls.usr) * (cls.temp_max - cls.temp_min)) + cls.temp_min
         
 
         return cls(temperature,humidity)
@@ -690,7 +690,7 @@ class _TemperatureAndHumiditySensor(EEP):
         data = bytearray([0, 0, 0, 0])
         data[0] = 0x00
         data[1] = int((self.humidity / 100.0) * self.usr)
-        data[2] = int(((self.temperature + self.temp_min) / (self.temp_max - self.temp_min)) * self.usr)
+        data[2] = int((self.current_temperature / (self.temp_max - self.temp_min)) * self.usr)
         data[3] = 0x00
         
         status = 0x00
@@ -698,7 +698,7 @@ class _TemperatureAndHumiditySensor(EEP):
         return Regular4BSMessage(address, status, data, True)
 
     @property
-    def temperature(self):
+    def current_temperature(self):
         return self._temperature
     
     @property
