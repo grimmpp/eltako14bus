@@ -430,9 +430,9 @@ class _HeatingCooling(EEP):
         if msg.org == 0x07:
 
             night_setback = msg.data[3] % 2 == 0
-            current_temp = (msg.data[2] / cls.usr) * cls.max_temp
             # reversed range (from 40° to 0°)
-            target_temp = ((cls.usr - msg.data[1]) / cls.usr) * cls.max_temp
+            current_temp = ((cls.usr - msg.data[2]) / cls.usr) * cls.max_temp
+            target_temp = (msg.data[1] / cls.usr) * cls.max_temp
             
             mode = cls.Heater_Mode.NORMAL
             d3 = msg.data[0]
@@ -454,7 +454,8 @@ class _HeatingCooling(EEP):
         if self.stand_by:
             data[3] = 14
 
-        data[2] = int(self.current_temperature / self.max_temp * self.usr)
+        # reversed range (from 40° to 0°)
+        data[2] = int((self.max_temp - self.current_temperature) / self.max_temp * self.usr)
 
         data[1] = int(self.target_temperature / self.max_temp * self.usr)
         

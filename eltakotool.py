@@ -455,39 +455,48 @@ def main():
         loop.run_until_complete(preread(bus))
         print("done.")
 
-    if opts.command == "enumerate":
-        maintask = enumerate_cmd(bus)
-    elif opts.command == "fakefam":
-        maintask = fakefam(bus, opts.device)
-    elif opts.command == "send_raw":
-        maintask = send_raw(bus, opts.data)
-    elif opts.command == "eval":
-        async def maintask(opts):
-            msg = eval(opts.expr)
-            print("Request: ", prettify(msg))
-            response = await bus.exchange(msg)
-            print("Response:", response)
-        maintask = maintask(opts)
-    elif opts.command == "lock_bus":
-        maintask = lock_bus(bus)
-    elif opts.command == "unlock_bus":
-        maintask = unlock_bus(bus)
-    elif opts.command == "show_off":
-        maintask = show_off(bus, opts.searchterm)
-    elif opts.command == 'dump':
-        maintask = dump(bus, opts.filename)
-    elif opts.command == 'verify':
-        if opts.cache:
-            print("Warning: verification with cache enabled can be misleading", file=sys.stderr)
-        maintask = verify(bus, opts.filename)
-    elif opts.command == 'reprogram':
-        maintask = reprogram(bus, opts.filename)
-    elif opts.command == 'listen':
-        maintask = listen(bus, opts.ensure_unlocked)
-    elif opts.command == 'automode':
-        maintask = automode(bus)
-    else:
-        raise RuntimeError("Additional command declared but not implemented.")
+    
+            # '0b  07  40  30  0d  87  ff  e2  35  81  00'      => EEP A5-10-06
+    data = b'\x0b\x07\x40\x30\x0d\x87\x00\x00\xB1\x0B\x00'
+            #          40  90  0D  80                           => EEP A5-10-12
+    data = b'\x0b\x07\x40\x90\x0d\x80\x00\x00\xB1\x0B\x00'
+    
+              
+    maintask = send_raw(bus, data)
+
+    # if opts.command == "enumerate":
+    #     maintask = enumerate_cmd(bus)
+    # elif opts.command == "fakefam":
+    #     maintask = fakefam(bus, opts.device)
+    # elif opts.command == "send_raw":
+    #     maintask = send_raw(bus, opts.data)
+    # elif opts.command == "eval":
+    #     async def maintask(opts):
+    #         msg = eval(opts.expr)
+    #         print("Request: ", prettify(msg))
+    #         response = await bus.exchange(msg)
+    #         print("Response:", response)
+    #     maintask = maintask(opts)
+    # elif opts.command == "lock_bus":
+    #     maintask = lock_bus(bus)
+    # elif opts.command == "unlock_bus":
+    #     maintask = unlock_bus(bus)
+    # elif opts.command == "show_off":
+    #     maintask = show_off(bus, opts.searchterm)
+    # elif opts.command == 'dump':
+    #     maintask = dump(bus, opts.filename)
+    # elif opts.command == 'verify':
+    #     if opts.cache:
+    #         print("Warning: verification with cache enabled can be misleading", file=sys.stderr)
+    #     maintask = verify(bus, opts.filename)
+    # elif opts.command == 'reprogram':
+    #     maintask = reprogram(bus, opts.filename)
+    # elif opts.command == 'listen':
+    #     maintask = listen(bus, opts.ensure_unlocked)
+    # elif opts.command == 'automode':
+    #     maintask = automode(bus)
+    # else:
+    #     raise RuntimeError("Additional command declared but not implemented.")
 
     maintask = asyncio.Task(maintask, loop=loop)
 
