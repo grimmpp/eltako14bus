@@ -234,6 +234,115 @@ class A5_08_01(_LightTemperatureOccupancySensor):
     volt_min = 0.0
     volt_max = 5.1
 
+class VOC_SubstancesType(int, Enum):
+
+    def __new__(cls, value, info:dict):
+        obj = int.__new__(cls, value)
+        obj._value_ = value
+        obj.info = info
+        return obj
+    
+    VOCT_TOTAL = (0, "VOCT Total", {})
+    Formaldehyde = (1, {'de': 'Formaldehyd', 'en': 'Formaldehyde', 'formula': 'CH20, HCH0'})
+    BENZENE = (2, {'de': 'Benzol', 'en': 'Benzene', 'formula': 'C6H6'})
+    STYRENE = (3, {'de': 'Styren', 'en': 'Styrene', 'formula': 'C8H8'})
+    TOLUENE = (4, {'de': 'Toluol', 'en': 'Toluene', 'formula': 'IUPAC'})
+    TETRACHLOROETHYLENE = (5, "Tetrachloroethylene", {'de': 'Tetrachlorethen', 'en': 'Tetrachloroethylene', 'formula': 'C4CI4'})
+    XYLENE = (6, {'de': 'Hexan', 'en': 'Xylene', 'formula': 'C8H10'})
+    HEXANE  = (7, {'de': 'Styren', 'en': 'Hexane', 'formula': 'C6H14'})
+    OCTANE = (8, {'de': 'Octane', 'en': 'Octane', 'formula': 'C8H18'})
+    CYCLOPENTANE  = (9, {'de': 'Cyclopentan', 'en': 'Cyclopentane', 'formula': 'C5H10'})
+    METHANOL = (10, {'de': 'Methanol', 'en': 'Methanol', 'formula': 'CH3OH'})
+    ETHANOL = (11, {'de': 'Ethanol', 'en': 'Ethanol', 'formula': 'C2H6O'})
+    PENTANOL_1 = (12, {'de': '1-Pentanol', 'en': '1-Pentanol', 'formula': 'C5H12O'})
+    ACETONE = (13, {'de': 'Aceton', 'en': 'Acetone', 'formula': 'C3H6O'})
+    ETHYLENE_OXIDE = (14, {'de': 'Ethylenoxid', 'en': 'ethylene Oxide', 'formula': 'C2H4O'})
+    ACETALDEHYDE = (15, {'de': 'Acetaldehyd', 'en': 'Acetaldehyde ue', 'formula': 'CH3-CHO'})
+    ACETIC_ACID = (16, "", {'de': 'Essigsäure', 'en': 'Acetic Acid', 'formula': 'CH3COOH'})
+    PROPIOICE_ACID = (17, {'de': 'Propionsäure', 'en': 'Propionice Acid', 'formula': 'C3H6O2'})
+    VALERIC_ACID = (18, "", {'de': 'Valeriansäure', 'en': 'Valeric Acid', 'formula': 'C5H10O2'})
+    BUTYRIC_ACID = (19, {'de': 'Buttersäure', 'en': 'Butyric Acid', 'formula': 'C4H8O2'})
+    AMMONIAC = (20, "", {'de': 'Ammoniak', 'en': 'Ammoniac', 'formula': 'NH3'})
+    HYDROGEN_SULFIDE = (22, {'de': 'Schwefelwasserstoff', 'en': 'Hydrogen Sulfide', 'formula': 'H2S'})
+    DIMETHYLSULFIDE = (23, {'de': 'Dimethylsulfid', 'en': 'Dimethylsulfide', 'formula': 'C2H6S'})
+    BUTYL_ALCOHOL = (24, {'de': '1-Butanol', 'en': '2-Butanol (butyl Alcohol)', 'formula': 'C4H10O'})
+    METHYLPROPANOL_2 = (25, {'de': '2-Methyl-1-propanol', 'en': '2-Methylpropanol', 'formula': 'C4H10O'})
+    DIETHYL_ETHER = (26, {'de': 'Diethylether', 'en': 'Diethyl ether', 'formula': '(C2H5)2O'})
+    NAPHTHALENE = (27, {'de': 'Naphthalin', 'en': 'Naphthalene', 'formula': 'C10H8'})
+    PHENYLCYCLOHEXENE_4 = (28, {'de': '4-Phenylcyclohexene', 'en': '4-Phenylcyclohexene', 'formula': 'C12H14'})
+    LIMONENE = (29, {'de': 'Limonenen', 'en': 'Limonene', 'formula': 'C10H16'})
+    TRICHLOROETHYLENE = (30, {'de': 'Trichlorethen', 'en': 'Trichloroethylene', 'formula': 'C2HCl3'})
+    ISOVALERIC = (31, {'de': 'Isovaleriansäure', 'en': 'Isovaleric acid', 'formula': 'C5H10O2'})
+    INDOLE = (32, {'de': 'Indol', 'en': 'Indole', 'formula': 'C8H7N'})
+    CADAVERINE = (33, {'de': 'Cadaverin', 'en': 'Cadaverine', 'formula': 'C5H14N2'})
+    PUTRESCINE = (34, {'de': 'Putrescin', 'en': 'Putrescine', 'formula': 'C4H12N2'})
+    CAPROIC_ACID = (35, {'de': 'Capronsäure', 'en': 'Caproic acid', 'formula': 'C6H12O2'})
+    OZONE = (255, {'de': 'Ozon', 'en': 'Ozone', 'formula': 'O3'})
+
+class VOC_Unit(Enum):
+
+    def __new__(cls, value, label:str):
+        obj = int.__new__(cls, value)
+        obj._value_ = value
+        obj.label = label
+        return obj
+    
+    PPB = (0, "ppb")
+    MGM3 = (1, "µg/m3")
+
+class _AirQualitySensor(EEP):
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        
+        concentration:float = msg.data[0] * 255 + msg.data[1]
+        
+        voc_substance_type = None
+        for t in VOC_SubstancesType:
+            if t[0] == msg.data[2]:
+                voc_substance_type = t
+
+        learn_button = (msg.data[3] & 0x08) >> 3
+
+        if (msg.data[3] & 0x04) == 0:
+            voc_substance_unit = VOC_Unit.PPB
+        else:
+            voc_substance_unit = VOC_Unit.MGM3
+
+        multi:float = 0.01 * 10** int(msg.data[3] & 0x3)
+        
+        return cls(concentration*multi, voc_substance_type, voc_substance_unit, learn_button)
+
+    def encode_message(self, address):
+        raise Exception("NOT IMPLEMENTED!")
+
+    def __init__(self, concentration:float, voc_type:VOC_SubstancesType, voc_unit:VOC_Unit, learn_button):
+        self._concentration = concentration
+        self._voc_type = voc_type
+        self._voc_unit = voc_unit
+        self._learn_button = learn_button
+        
+    @property
+    def concentration(self):
+        return self._concentration
+
+    @property
+    def voc_type(self) -> VOC_SubstancesType:
+        return self._voc_type
+    
+    @property
+    def _voc_unit(self) -> VOC_Unit:
+        return self._voc_unit
+    
+    @property
+    def concentration(self) -> float:
+        return self._concentration
+
+class A5_09_0C(_AirQualitySensor):
+    """Air quality sensor"""
+
 # ======================================
 # MARK: - Central Command
 # ======================================
