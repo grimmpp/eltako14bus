@@ -338,7 +338,7 @@ class _AirQualitySensor(EEP):
         
         voc_substance_type = None
         for t in VOC_SubstancesType:
-            if t[0] == msg.data[2]:
+            if t.index == msg.data[2]:
                 voc_substance_type = t
 
         learn_button = (msg.data[3] & 0x08) >> 3
