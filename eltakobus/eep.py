@@ -234,59 +234,96 @@ class A5_08_01(_LightTemperatureOccupancySensor):
     volt_min = 0.0
     volt_max = 5.1
 
-class VOC_SubstancesType(int, Enum):
+class VOC_SubstancesType(Enum):
 
-    def __new__(cls, value, info:dict):
-        obj = int.__new__(cls, value)
-        obj._value_ = value
-        obj.info = info
+    def __new__(cls, index:int, name_de:str, name_en:str, formula:str, unit:str):
+        obj = object.__new__(cls)
+        obj._value_ = index
+        obj._name = name_en
+        obj._name_de = name_de
+        obj._name_en = name_en
+        obj._formula = formula
+        obj._unit = unit
         return obj
+
+    @property
+    def index(self) -> int:
+        return self._value_
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def name_de(self) -> str:
+        return self._name_de
+
+    @property
+    def name_en(self) -> str:
+        return self._name_en
+
+    @property
+    def unit(self) -> str:
+        return self._unit
     
-    VOCT_TOTAL = (0, "VOCT Total", {})
-    Formaldehyde = (1, {'de': 'Formaldehyd', 'en': 'Formaldehyde', 'formula': 'CH20, HCH0'})
-    BENZENE = (2, {'de': 'Benzol', 'en': 'Benzene', 'formula': 'C6H6'})
-    STYRENE = (3, {'de': 'Styren', 'en': 'Styrene', 'formula': 'C8H8'})
-    TOLUENE = (4, {'de': 'Toluol', 'en': 'Toluene', 'formula': 'IUPAC'})
-    TETRACHLOROETHYLENE = (5, "Tetrachloroethylene", {'de': 'Tetrachlorethen', 'en': 'Tetrachloroethylene', 'formula': 'C4CI4'})
-    XYLENE = (6, {'de': 'Hexan', 'en': 'Xylene', 'formula': 'C8H10'})
-    HEXANE  = (7, {'de': 'Styren', 'en': 'Hexane', 'formula': 'C6H14'})
-    OCTANE = (8, {'de': 'Octane', 'en': 'Octane', 'formula': 'C8H18'})
-    CYCLOPENTANE  = (9, {'de': 'Cyclopentan', 'en': 'Cyclopentane', 'formula': 'C5H10'})
-    METHANOL = (10, {'de': 'Methanol', 'en': 'Methanol', 'formula': 'CH3OH'})
-    ETHANOL = (11, {'de': 'Ethanol', 'en': 'Ethanol', 'formula': 'C2H6O'})
-    PENTANOL_1 = (12, {'de': '1-Pentanol', 'en': '1-Pentanol', 'formula': 'C5H12O'})
-    ACETONE = (13, {'de': 'Aceton', 'en': 'Acetone', 'formula': 'C3H6O'})
-    ETHYLENE_OXIDE = (14, {'de': 'Ethylenoxid', 'en': 'ethylene Oxide', 'formula': 'C2H4O'})
-    ACETALDEHYDE = (15, {'de': 'Acetaldehyd', 'en': 'Acetaldehyde ue', 'formula': 'CH3-CHO'})
-    ACETIC_ACID = (16, "", {'de': 'Essigsäure', 'en': 'Acetic Acid', 'formula': 'CH3COOH'})
-    PROPIOICE_ACID = (17, {'de': 'Propionsäure', 'en': 'Propionice Acid', 'formula': 'C3H6O2'})
-    VALERIC_ACID = (18, "", {'de': 'Valeriansäure', 'en': 'Valeric Acid', 'formula': 'C5H10O2'})
-    BUTYRIC_ACID = (19, {'de': 'Buttersäure', 'en': 'Butyric Acid', 'formula': 'C4H8O2'})
-    AMMONIAC = (20, "", {'de': 'Ammoniak', 'en': 'Ammoniac', 'formula': 'NH3'})
-    HYDROGEN_SULFIDE = (22, {'de': 'Schwefelwasserstoff', 'en': 'Hydrogen Sulfide', 'formula': 'H2S'})
-    DIMETHYLSULFIDE = (23, {'de': 'Dimethylsulfid', 'en': 'Dimethylsulfide', 'formula': 'C2H6S'})
-    BUTYL_ALCOHOL = (24, {'de': '1-Butanol', 'en': '2-Butanol (butyl Alcohol)', 'formula': 'C4H10O'})
-    METHYLPROPANOL_2 = (25, {'de': '2-Methyl-1-propanol', 'en': '2-Methylpropanol', 'formula': 'C4H10O'})
-    DIETHYL_ETHER = (26, {'de': 'Diethylether', 'en': 'Diethyl ether', 'formula': '(C2H5)2O'})
-    NAPHTHALENE = (27, {'de': 'Naphthalin', 'en': 'Naphthalene', 'formula': 'C10H8'})
-    PHENYLCYCLOHEXENE_4 = (28, {'de': '4-Phenylcyclohexene', 'en': '4-Phenylcyclohexene', 'formula': 'C12H14'})
-    LIMONENE = (29, {'de': 'Limonenen', 'en': 'Limonene', 'formula': 'C10H16'})
-    TRICHLOROETHYLENE = (30, {'de': 'Trichlorethen', 'en': 'Trichloroethylene', 'formula': 'C2HCl3'})
-    ISOVALERIC = (31, {'de': 'Isovaleriansäure', 'en': 'Isovaleric acid', 'formula': 'C5H10O2'})
-    INDOLE = (32, {'de': 'Indol', 'en': 'Indole', 'formula': 'C8H7N'})
-    CADAVERINE = (33, {'de': 'Cadaverin', 'en': 'Cadaverine', 'formula': 'C5H14N2'})
-    PUTRESCINE = (34, {'de': 'Putrescin', 'en': 'Putrescine', 'formula': 'C4H12N2'})
-    CAPROIC_ACID = (35, {'de': 'Capronsäure', 'en': 'Caproic acid', 'formula': 'C6H12O2'})
-    OZONE = (255, {'de': 'Ozon', 'en': 'Ozone', 'formula': 'O3'})
+    @property
+    def formula(self) -> str:
+        return self._formula
+
+    # index, de-name, en-name, formula, unit
+    VOCT_TOTAL = 0, 'VOCT Total', 'VOCT Total', '', ''
+    Formaldehyde = 1, 'Formaldehyd', 'Formaldehyde', 'CH2O', ''
+    BENZENE = 2, 'Benzol', 'Benzene', 'C6H6', ''
+    STYRENE = 3, 'Styren', 'Styrene', 'C8H8', ''
+    TOLUENE = 4, 'Toluol', 'Toluene', 'IUPAC', ''
+    TETRACHLOROETHYLENE = 5, 'Tetrachlorethen', 'Tetrachloroethylene', 'C4CI4', ''
+    XYLENE = 6, 'Hexan', 'Xylene', 'C8H10', ''
+    HEXANE  = 7, 'Styren', 'Hexane', 'C6H14', ''
+    OCTANE = 8, 'Octane', 'Octane', 'C8H18', ''
+    CYCLOPENTANE  = 9, 'Cyclopentan', 'Cyclopentane', 'C5H10', ''
+    METHANOL = 10, 'Methanol', 'Methanol', 'CH3OH', ''
+    ETHANOL = 11, 'Ethanol', 'Ethanol', 'C2H6O', ''
+    PENTANOL_1 = 12, '1-Pentanol', '1-Pentanol', 'C5H12O', ''
+    ACETONE = 13, 'Aceton', 'Acetone', 'C3H6O', ''
+    ETHYLENE_OXIDE = 14, 'Ethylenoxid', 'ethylene Oxide', 'C2H4O', ''
+    ACETALDEHYDE = 15, 'Acetaldehyd', 'Acetaldehyde ue', 'CH3-CHO', ''
+    ACETIC_ACID = 16, 'Essigsäure', 'Acetic Acid', 'CH3COOH', ''
+    PROPIOICE_ACID = 17, 'Propionsäure', 'Propionice Acid', 'C3H6O2', ''
+    VALERIC_ACID = 18, 'Valeriansäure', 'Valeric Acid', 'C5H10O2', ''
+    BUTYRIC_ACID = 19, 'Buttersäure', 'Butyric Acid', 'C4H8O2', ''
+    AMMONIAC = 20, 'Ammoniak', 'Ammoniac', 'NH3', ''
+    HYDROGEN_SULFIDE = 22, 'Schwefelwasserstoff', 'Hydrogen Sulfide', 'H2S', ''
+    DIMETHYLSULFIDE = 23, 'Dimethylsulfid', 'Dimethylsulfide', 'C2H6S', ''
+    BUTYL_ALCOHOL = 24, '1-Butanol', '2-Butanol butyl Alcohol', 'C4H10O', ''
+    METHYLPROPANOL_2 = 25, '2-Methyl-1-propanol', '2-Methylpropanol', 'C4H10O', ''
+    DIETHYL_ETHER = 26, 'Diethylether', 'Diethyl ether', 'C2H52O', ''
+    NAPHTHALENE = 27, 'Naphthalin', 'Naphthalene', 'C10H8', ''
+    PHENYLCYCLOHEXENE_4 = 28, '4-Phenylcyclohexene', '4-Phenylcyclohexene', 'C12H14', ''
+    LIMONENE = 29, 'Limonenen', 'Limonene', 'C10H16', ''
+    TRICHLOROETHYLENE = 30, 'Trichlorethen', 'Trichloroethylene', 'C2HCl3', ''
+    ISOVALERIC = 31, 'Isovaleriansäure', 'Isovaleric acid', 'C5H10O2', ''
+    INDOLE = 32, 'Indol', 'Indole', 'C8H7N', ''
+    CADAVERINE = 33, 'Cadaverin', 'Cadaverine', 'C5H14N2', ''
+    PUTRESCINE = 34, 'Putrescin', 'Putrescine', 'C4H12N2', ''
+    CAPROIC_ACID = 35, 'Capronsäure', 'Caproic acid', 'C6H12O2', ''
+    OZONE = 255, 'Ozon', 'Ozone', 'O3', ''
 
 class VOC_Unit(Enum):
 
-    def __new__(cls, value, label:str):
-        obj = int.__new__(cls, value)
-        obj._value_ = value
-        obj.label = label
+    def __new__(cls, index:int, label:str):
+        obj = object.__new__(cls)
+        obj._value_ = index
+        obj._label = label
         return obj
     
+    @property
+    def index(self) -> int:
+        return self._value_
+
+    @property
+    def label(self) -> str:
+        return self._label
+
     PPB = (0, "ppb")
     MGM3 = (1, "µg/m3")
 
