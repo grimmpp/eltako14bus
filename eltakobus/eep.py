@@ -370,7 +370,7 @@ class _AirQualitySensor(EEP):
         return self._voc_type
     
     @property
-    def _voc_unit(self) -> VOC_Unit:
+    def voc_unit(self) -> VOC_Unit:
         return self._voc_unit
     
     @property
