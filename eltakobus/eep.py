@@ -234,6 +234,26 @@ class A5_08_01(_LightTemperatureOccupancySensor):
     volt_min = 0.0
     volt_max = 5.1
 
+class VOC_Unit(Enum):
+
+    def __new__(cls, index:int, label:str):
+        obj = object.__new__(cls)
+        obj._value_ = index
+        obj._label = label
+        return obj
+    
+    @property
+    def index(self) -> int:
+        return self._value_
+
+    @property
+    def label(self) -> str:
+        return self._label
+
+    PPB = (0, "ppb")
+    MGM3 = (1, "µg/m3")
+
+
 class VOC_SubstancesType(Enum):
 
     def __new__(cls, index:int, name_de:str, name_en:str, formula:str, unit:str):
@@ -271,7 +291,7 @@ class VOC_SubstancesType(Enum):
         return self._formula
 
     # index, de-name, en-name, formula, unit
-    VOCT_TOTAL = 0, 'VOCT Total', 'VOCT Total', '', ''
+    VOCT_TOTAL = 0, 'VOCT Total', 'VOCT Total', '', VOC_Unit.PPB.label
     Formaldehyde = 1, 'Formaldehyd', 'Formaldehyde', 'CH2O', ''
     BENZENE = 2, 'Benzol', 'Benzene', 'C6H6', ''
     STYRENE = 3, 'Styren', 'Styrene', 'C8H8', ''
@@ -308,24 +328,6 @@ class VOC_SubstancesType(Enum):
     CAPROIC_ACID = 35, 'Capronsäure', 'Caproic acid', 'C6H12O2', ''
     OZONE = 255, 'Ozon', 'Ozone', 'O3', ''
 
-class VOC_Unit(Enum):
-
-    def __new__(cls, index:int, label:str):
-        obj = object.__new__(cls)
-        obj._value_ = index
-        obj._label = label
-        return obj
-    
-    @property
-    def index(self) -> int:
-        return self._value_
-
-    @property
-    def label(self) -> str:
-        return self._label
-
-    PPB = (0, "ppb")
-    MGM3 = (1, "µg/m3")
 
 class _AirQualitySensor(EEP):
 
@@ -338,7 +340,7 @@ class _AirQualitySensor(EEP):
         
         voc_substance_type = None
         for t in VOC_SubstancesType:
-            if t.index == msg.data[2]:
+            if t.index == int(msg.data[2]):
                 voc_substance_type = t
 
         learn_button = (msg.data[3] & 0x08) >> 3
