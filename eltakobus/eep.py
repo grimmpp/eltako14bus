@@ -234,6 +234,154 @@ class A5_08_01(_LightTemperatureOccupancySensor):
     volt_min = 0.0
     volt_max = 5.1
 
+class VOC_Unit(Enum):
+
+    def __new__(cls, index:int, label:str):
+        obj = object.__new__(cls)
+        obj._value_ = index
+        obj._label = label
+        return obj
+    
+    @property
+    def index(self) -> int:
+        return self._value_
+
+    @property
+    def label(self) -> str:
+        return self._label
+
+    PPB = (0, "ppb")
+    MGM3 = (1, "µg/m3")
+
+
+class VOC_SubstancesType(Enum):
+
+    def __new__(cls, index:int, name_de:str, name_en:str, formula:str, unit:str):
+        obj = object.__new__(cls)
+        obj._value_ = index
+        obj._name = name_en
+        obj._name_de = name_de
+        obj._name_en = name_en
+        obj._formula = formula
+        obj._unit = unit
+        return obj
+
+    @property
+    def index(self) -> int:
+        return self._value_
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def name_de(self) -> str:
+        return self._name_de
+
+    @property
+    def name_en(self) -> str:
+        return self._name_en
+
+    @property
+    def unit(self) -> str:
+        return self._unit
+    
+    @property
+    def formula(self) -> str:
+        return self._formula
+
+    # index, de-name, en-name, formula, unit
+    VOCT_TOTAL = 0, 'VOCT Total', 'VOCT Total', '', VOC_Unit.PPB.label
+    Formaldehyde = 1, 'Formaldehyd', 'Formaldehyde', 'CH2O', ''
+    BENZENE = 2, 'Benzol', 'Benzene', 'C6H6', ''
+    STYRENE = 3, 'Styren', 'Styrene', 'C8H8', ''
+    TOLUENE = 4, 'Toluol', 'Toluene', 'IUPAC', ''
+    TETRACHLOROETHYLENE = 5, 'Tetrachlorethen', 'Tetrachloroethylene', 'C4CI4', ''
+    XYLENE = 6, 'Hexan', 'Xylene', 'C8H10', ''
+    HEXANE  = 7, 'Styren', 'Hexane', 'C6H14', ''
+    OCTANE = 8, 'Octane', 'Octane', 'C8H18', ''
+    CYCLOPENTANE  = 9, 'Cyclopentan', 'Cyclopentane', 'C5H10', ''
+    METHANOL = 10, 'Methanol', 'Methanol', 'CH3OH', ''
+    ETHANOL = 11, 'Ethanol', 'Ethanol', 'C2H6O', ''
+    PENTANOL_1 = 12, '1-Pentanol', '1-Pentanol', 'C5H12O', ''
+    ACETONE = 13, 'Aceton', 'Acetone', 'C3H6O', ''
+    ETHYLENE_OXIDE = 14, 'Ethylenoxid', 'ethylene Oxide', 'C2H4O', ''
+    ACETALDEHYDE = 15, 'Acetaldehyd', 'Acetaldehyde ue', 'CH3-CHO', ''
+    ACETIC_ACID = 16, 'Essigsäure', 'Acetic Acid', 'CH3COOH', ''
+    PROPIOICE_ACID = 17, 'Propionsäure', 'Propionice Acid', 'C3H6O2', ''
+    VALERIC_ACID = 18, 'Valeriansäure', 'Valeric Acid', 'C5H10O2', ''
+    BUTYRIC_ACID = 19, 'Buttersäure', 'Butyric Acid', 'C4H8O2', ''
+    AMMONIAC = 20, 'Ammoniak', 'Ammoniac', 'NH3', ''
+    HYDROGEN_SULFIDE = 22, 'Schwefelwasserstoff', 'Hydrogen Sulfide', 'H2S', ''
+    DIMETHYLSULFIDE = 23, 'Dimethylsulfid', 'Dimethylsulfide', 'C2H6S', ''
+    BUTYL_ALCOHOL = 24, '1-Butanol', '2-Butanol butyl Alcohol', 'C4H10O', ''
+    METHYLPROPANOL_2 = 25, '2-Methyl-1-propanol', '2-Methylpropanol', 'C4H10O', ''
+    DIETHYL_ETHER = 26, 'Diethylether', 'Diethyl ether', 'C2H52O', ''
+    NAPHTHALENE = 27, 'Naphthalin', 'Naphthalene', 'C10H8', ''
+    PHENYLCYCLOHEXENE_4 = 28, '4-Phenylcyclohexene', '4-Phenylcyclohexene', 'C12H14', ''
+    LIMONENE = 29, 'Limonenen', 'Limonene', 'C10H16', ''
+    TRICHLOROETHYLENE = 30, 'Trichlorethen', 'Trichloroethylene', 'C2HCl3', ''
+    ISOVALERIC = 31, 'Isovaleriansäure', 'Isovaleric acid', 'C5H10O2', ''
+    INDOLE = 32, 'Indol', 'Indole', 'C8H7N', ''
+    CADAVERINE = 33, 'Cadaverin', 'Cadaverine', 'C5H14N2', ''
+    PUTRESCINE = 34, 'Putrescin', 'Putrescine', 'C4H12N2', ''
+    CAPROIC_ACID = 35, 'Capronsäure', 'Caproic acid', 'C6H12O2', ''
+    OZONE = 255, 'Ozon', 'Ozone', 'O3', ''
+
+
+class _AirQualitySensor(EEP):
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        
+        concentration:float = msg.data[0] * 255 + msg.data[1]
+        
+        voc_substance_type = None
+        for t in VOC_SubstancesType:
+            if t.index == int(msg.data[2]):
+                voc_substance_type = t
+
+        learn_button = (msg.data[3] & 0x08) >> 3
+
+        if (msg.data[3] & 0x04) == 0:
+            voc_substance_unit = VOC_Unit.PPB
+        else:
+            voc_substance_unit = VOC_Unit.MGM3
+
+        multi:float = 0.01 * 10** int(msg.data[3] & 0x3)
+        
+        return cls(concentration*multi, voc_substance_type, voc_substance_unit, learn_button)
+
+    def encode_message(self, address):
+        raise Exception("NOT IMPLEMENTED!")
+
+    def __init__(self, concentration:float, voc_type:VOC_SubstancesType, voc_unit:VOC_Unit, learn_button):
+        self._concentration = concentration
+        self._voc_type = voc_type
+        self._voc_unit = voc_unit
+        self._learn_button = learn_button
+        
+    @property
+    def concentration(self):
+        return self._concentration
+
+    @property
+    def voc_type(self) -> VOC_SubstancesType:
+        return self._voc_type
+    
+    @property
+    def voc_unit(self) -> VOC_Unit:
+        return self._voc_unit
+    
+    @property
+    def concentration(self) -> float:
+        return self._concentration
+
+class A5_09_0C(_AirQualitySensor):
+    """Air quality sensor"""
+
 # ======================================
 # MARK: - Central Command
 # ======================================
@@ -415,8 +563,9 @@ class M5_38_08(_EltakoSwitchingCommand):
 # ======================================
 
 class _HeatingCooling(EEP):
-    min_temp = 0
-    max_temp = 40
+    min_temp:float = 0
+    max_temp:float = 40
+    usr:float = 255.0 # unscaled range 
 
     class Heater_Mode(Enum):
         NORMAL = 0
@@ -429,8 +578,9 @@ class _HeatingCooling(EEP):
         if msg.org == 0x07:
 
             night_setback = msg.data[3] % 2 == 0
-            current_temp = (msg.data[2] / 255.0) * cls.max_temp
-            target_temp = (msg.data[1] / 255.0) * cls.max_temp
+            # reversed range (from 40° to 0°)
+            current_temp = ((cls.usr - msg.data[2]) / cls.usr) * cls.max_temp
+            target_temp = (msg.data[1] / cls.usr) * cls.max_temp
             
             mode = cls.Heater_Mode.NORMAL
             d3 = msg.data[0]
@@ -452,9 +602,10 @@ class _HeatingCooling(EEP):
         if self.stand_by:
             data[3] = 14
 
-        data[2] = int(self.current_temp / self.max_temp * 255.0)
+        # reversed range (from 40° to 0°)
+        data[2] = int((self.max_temp - self.current_temperature) / self.max_temp * self.usr)
 
-        data[1] = int(self.target_temp / self.max_temp * 255.0)
+        data[1] = int(self.target_temperature / self.max_temp * self.usr)
         
         data[0] = 0
         if self.mode == _HeatingCooling.Heater_Mode.NIGHT_SET_BACK_4_DEGREES:
@@ -473,11 +624,11 @@ class _HeatingCooling(EEP):
         return self._mode
     
     @property
-    def target_temp(self):
+    def target_temperature(self):
         return self._target_temp
     
     @property
-    def current_temp(self):
+    def current_temperature(self):
         return self._current_temp
     
     @property
@@ -494,7 +645,55 @@ class _HeatingCooling(EEP):
 class A5_10_06(_HeatingCooling):
     """Heating and Cooling"""
 
-class A5_10_12(EEP):
+class _HeatingCoolingHumidity(EEP):
+    temp_min = 0.0
+    temp_max = 40.0
+    usr = 250.0 # unscaled range 
+    usr_tt = 255.0 # unscaled range for target temperature
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        
+        target_temperature = (msg.data[0] / cls.usr) * (cls.temp_max - cls.temp_min) + cls.temp_min
+        # 0 .. 100%
+        humidity = (msg.data[1] / cls.usr) * 100.0
+        # -20°C .. +60°C
+        current_temperature = (msg.data[2] / cls.usr) * (cls.temp_max - cls.temp_min) + cls.temp_min
+        
+        return cls(current_temperature, target_temperature, humidity)
+
+    def encode_message(self, address):
+        data = bytearray([0, 0, 0, 0])
+        data[0] = int((self._target_temperature / (self.temp_max - self.temp_min)) * self.usr)
+        data[1] = int((self._humidity / 100.0) * self.usr)
+        data[2] = int((self._current_temperature / (self.temp_max - self.temp_min)) * self.usr)
+        data[3] = 8 # data telegram
+        
+        status = 0x00
+
+        return Regular4BSMessage(address, status, data, True)
+
+    @property
+    def current_temperature(self):
+        return self._current_temperature
+    
+    @property
+    def target_temperature(self):
+        return self._target_temperature
+    
+    @property
+    def humidity(self):
+        return self._humidity
+    
+    def __init__(self, current_temperature, target_temperature, humidity):
+        self._current_temperature = current_temperature
+        self._target_temperature = target_temperature
+        self._humidity = humidity
+
+
+class A5_10_12(_HeatingCoolingHumidity):
     """Temperature Controller Command"""
 
 # ======================================
@@ -620,15 +819,19 @@ class A5_13_01(_WeatherStation):
 # MARK: -  temperature + humidity sensor
 # ======================================
 class _TemperatureAndHumiditySensor(EEP):
+    temp_min = -20.0
+    temp_max = 60.0
+    usr = 250.0 # unscaled range 
+
     @classmethod
     def decode_message(cls, msg):
         if msg.org != 0x07:
             raise WrongOrgError
         
         # 0 .. 100%
-        humidity = (msg.data[1] /255.0) * 100
+        humidity = (msg.data[1] / cls.usr) * 100.0
         # -20°C .. +60°C
-        temperature = (msg.data[2] / 255.0 ) * 80.0 - 20.0
+        temperature = ((msg.data[2] / cls.usr) * (cls.temp_max - cls.temp_min)) + cls.temp_min
         
 
         return cls(temperature,humidity)
@@ -636,8 +839,8 @@ class _TemperatureAndHumiditySensor(EEP):
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
         data[0] = 0x00
-        data[1] = int((self.humidity / 100.0) * 255.0)
-        data[2] = int(((self.temperature + 20.0) / 80.0) * 255.0)
+        data[1] = int((self.humidity / 100.0) * self.usr)
+        data[2] = int((self.current_temperature / (self.temp_max - self.temp_min)) * self.usr)
         data[3] = 0x00
         
         status = 0x00
@@ -645,7 +848,7 @@ class _TemperatureAndHumiditySensor(EEP):
         return Regular4BSMessage(address, status, data, True)
 
     @property
-    def temperature(self):
+    def current_temperature(self):
         return self._temperature
     
     @property

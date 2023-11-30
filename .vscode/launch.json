@@ -9,7 +9,8 @@
             "type": "python",
             "request": "launch",
             "program": "eltakotool.py",
-            "args": ["--eltakobus", "/dev/ttyUSB0", "listen"],
+            "args": ["--eltakobus", "/dev/ttyUSB1", "--baud_rate", "9600", "listen"], // for FAM14-USB
+            // "args": ["--eltakobus", "/dev/ttyUSB2", "listen"],    // for FAM14, FGW15-USB ...
             "console": "integratedTerminal",
             "justMyCode": true
         },
