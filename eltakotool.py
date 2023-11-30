@@ -385,6 +385,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--rawuri", help="URI at which a raw ESP2 resource is exposed")
     p.add_argument("--eltakobus", help="File at which a RS485 Eltako bus can be opened")
+    p.add_argument("--baud_rate", default=57600, help="baud rate for transmitter or gateway (FAM15=57600, FGW14-USB=57600, FAM-USB=9600)")
     p.add_argument("--cache", help="Store cachable responses locally", action='store_true')
     p.add_argument("--cachefile", help="File to cache responses at", type=Path)
     p.add_argument("--preread", help="Enumerate bus and read devices' memory before executing the command", action='store_true')
@@ -440,7 +441,7 @@ def main():
         cache_rawpart = opts.rawuri.replace('/', '-')
     if opts.eltakobus:
         bus_ready = asyncio.Future(loop=loop)
-        bus = RS485SerialInterface(opts.eltakobus)
+        bus = RS485SerialInterface(opts.eltakobus, baud_rate=int(opts.baud_rate))
         asyncio.ensure_future(bus.run(loop, conn_made=bus_ready), loop=loop)
         loop.run_until_complete(bus_ready)
         cache_rawpart = opts.eltakobus.replace('/', '-')

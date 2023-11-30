@@ -14,7 +14,7 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
     Note that this relies on the UART to be configured to drive the bus only
     when data is being sent, as for example done by the Digitus adapters.
     """
-    def __init__(self, filename, suppress_echo=None, log=None):
+    def __init__(self, filename, suppress_echo=None, log=None, baud_rate=57600):
         self._filename = filename
 
         self.received = asyncio.Queue()
@@ -33,6 +33,7 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
         # snatch the first bytes off the buffer
         self._buffer_request = None
         self._buffer_request_level = 0
+        self.baud_rate = baud_rate
 
     def connection_made(self, transport):
         self.transport.set_result(transport)
@@ -104,7 +105,7 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
                 loop,
                 protocol_factory=lambda: self,
                 url=self._filename,
-                baudrate=57600
+                baudrate=self.baud_rate
                 )
         self.transport = await self.transport
 

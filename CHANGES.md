@@ -3,6 +3,9 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## 0.0.30
+- Added parameter for baud rate.
+
+## 0.0.30
 - Status message for temperature actuator/sensor added. (EEP A5-10-06 and A5-10-12)
 - Status message for air quality sensor added. (EEP A5-09-0C)
 
