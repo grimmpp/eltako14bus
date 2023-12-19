@@ -5,12 +5,33 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "eltakotool listen",
+            "name": "eltakotool listen (Linux)",
             "type": "python",
             "request": "launch",
             "program": "eltakotool.py",
-            "args": ["--eltakobus", "/dev/ttyUSB1", "--baud_rate", "9600", "listen"], // for FAM14-USB
-            // "args": ["--eltakobus", "/dev/ttyUSB2", "listen"],    // for FAM14, FGW15-USB ...
+            //Linux listen to bus
+            // "args": ["--eltakobus", "/dev/ttyUSB1", "--baud_rate", "9600", "listen"], // for FAM14-USB
+            "args": ["--eltakobus", "/dev/ttyUSB2", "listen"],    // for FAM14, FGW15-USB ...
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "eltakotool listen (Windows)",
+            "type": "python",
+            "request": "launch",
+            "program": "eltakotool.py",
+            //Linux listen to bus
+            // "args": ["--eltakobus", "COM10", "--baud_rate", "9600", "listen"], // for FAM14-USB
+            "args": ["--eltakobus", "COM10", "listen"],    // for FAM14, FGW15-USB ...
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "eltakotool dump device momories (Windows)",
+            "type": "python",
+            "request": "launch",
+            "program": "eltakotool.py",
+            "args": ["--eltakobus", "COM10", "dump", "device-mem-dump.txt"], // for FAM14
             "console": "integratedTerminal",
             "justMyCode": true
         },

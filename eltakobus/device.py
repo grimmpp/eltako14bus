@@ -1,16 +1,111 @@
 from collections import defaultdict, namedtuple
+from enum import IntEnum
 import asyncio
 import binascii
 import random
 import yaml
 
-from .util import b2a, AddressExpression
+from .util import b2a, b2s, AddressExpression
 from .message import *
 from .error import UnrecognizedUpdate
 from .eep import EEP, A5_38_08, A5_12_01, F6_02_01, F6_02_02
 
+
+
+class KeyFunction(IntEnum):
+    """Numbers of KeyFunctions from PCT14."""
+    NO_FUNCTION = 0
+    UNIVERSAL_PUSH_BUTTON = 1
+    DIRECTION_PUSH_BUTTON_TOP_ON = 2
+    DIRECTION_PUSH_BUTTON_BOTTOM_ON = 3
+    CENTRAL_OFF = 4
+    CENTRAL_ON = 5
+    SCENE_PUSHBUTTON = 6
+
+    CENTRAL_UP_DOWN = 12
+
+    CENTRAL_UP_DOWN_WITH_DYNAMIC_PRIORITY = 14
+    WINDOW_CONTACT = 16
+    CENTRAL_UP_DOWN_WITH_STATIC_PRIORITY = 19
+    CENTRAL_OFF_WITH_STATIC_PRIORITY = 21
+    CENTRAL_ON_WITH_STATIC_PRIORITY = 22
+
+    WINDOW_HANDLE_FTKE = 25
+    FOUR_FOLD_TEST_PUSH_BUTTON = 29
+    FOUR_FOLD_PUSH_BUTTON = 30
+    OPERATIONS_COMMAND_WITH_TIME_VALUE_TRASMISSION_FROM_CONTROLLER = 31
+    DIMMING_VALUE_FROM_CONTROLLER = 32       # for PC/home automation - FUD
+    FBH_WITHOUT_BRIGHTNESS_EVALUATION = 34
+    MOTION_DETECTOR_ACCORDING_TO_EEP_A5_07_01 = 35
+
+    SWITCHING_STATE_FROM_CONTROLLER = 51     # for PC/home automation - FSR
+
+    TEMPERATURE_CONTROLLER_WITH_SETPOINT = 61
+    TEMPERATURE_CONTROLLER_WITHOUT_SLIDE_SWITCH = 62
+    TEMPERATURE_CONTROLLER_WITH_SLIDE_SWITCH_SUN_MOON = 63
+    TEMPERATURE_CONTROLLER_ACCORDING_EEP_A5_10_06_FTR55D = 64    #used for FUTH
+    TEMPERATURE_CONTROLLER_SETPOINT = 65     # for PC/home automations - FHK, FAE, ...
+    TEMPERATURE_CONTROLLER_ACCORDING_EEP_A5_02_05 = 66
+    HUMIDITY_TEMPERATURE_SENSOR_ACCORDING_TO_EEP_A5_04_02 = 67
+    TEMPERATURE_SENSOR_ACCORDING_TO_EEP_A5_10_02 = 68
+    HUMIDITY_TEMPERATURE_SENSOR_FUTH = 69
+    TEMPERATURE_SENSOR_ACCORDING_TO_EEP_A5_10_03 = 70
+    TEMPERATURE_SENSOR_ACCORDING_TO_EEP_A5_10_03_LIMITED_TEMP_RANGE = 71
+
+    WINDOW_HANDLE_ACCORDING_TO_EEP_A5_14_09 = 120
+    WINDOW_HANDLE_ACCORDING_TO_EEP_A5_14_0A = 121
+
+    HEAT_PUMP = 137     # switch for cooling mode
+
+    HUMIDITY_TEMPERATURE_SENSOR_ACCORDING_TO_EEP_A5_04_03 = 139
+
+    HUMIDITY_TEMPERATURE_SENSOR_FUTH_TEMP_SETPOINT_ACCORDING_TO_EEP_A5_10_12_BUTH = 149
+    
+
+
+    def get_pc_functions(self) -> []:
+        return [self.DIMMING_VALUE_FROM_CONTROLLER, 
+                self.SWITCHING_STATE_FROM_CONTROLLER, 
+                self.TEMPERATURE_CONTROLLER_ACCORDING_EEP_A5_10_06_FTR55D, 
+                self.TEMPERATURE_CONTROLLER_SETPOINT]
+    
+    def get_fhk_function_group_1(self) -> []:
+        return [self.NO_FUNCTION,
+                self.TEMPERATURE_CONTROLLER_WITH_SETPOINT,
+                self.TEMPERATURE_CONTROLLER_WITHOUT_SLIDE_SWITCH,
+                self.TEMPERATURE_CONTROLLER_WITH_SLIDE_SWITCH_SUN_MOON,
+                self.TEMPERATURE_CONTROLLER_ACCORDING_EEP_A5_10_06_FTR55D, #used for FUTH
+                self.TEMPERATURE_CONTROLLER_ACCORDING_EEP_A5_02_05,
+                self.HUMIDITY_TEMPERATURE_SENSOR_ACCORDING_TO_EEP_A5_04_02,
+                self.TEMPERATURE_SENSOR_ACCORDING_TO_EEP_A5_10_02,
+                self.TEMPERATURE_SENSOR_ACCORDING_TO_EEP_A5_10_03,
+                self.TEMPERATURE_SENSOR_ACCORDING_TO_EEP_A5_10_03,
+                self.HUMIDITY_TEMPERATURE_SENSOR_ACCORDING_TO_EEP_A5_04_03]
+
+    def get_fhk_function_group_2(self) -> []:
+        return [self.NO_FUNCTION,
+                self.HUMIDITY_TEMPERATURE_SENSOR_FUTH,
+                self.HUMIDITY_TEMPERATURE_SENSOR_FUTH_TEMP_SETPOINT_ACCORDING_TO_EEP_A5_10_12_BUTH]
+
+class SensorInfo():
+
+    def __init__(self, sensor_id:bytes, dev_type:str, dev_id:int, dev_adr:bytes, key:int, key_func:int, channel:int, in_func_group:int):
+        self.sensor_id = sensor_id
+        self.sensor_id_str = b2s(sensor_id)
+        self.dev_type = dev_type
+        self.dev_id = dev_id
+        self.dev_adr = dev_adr
+        self.dev_adr_str = b2s(dev_adr)
+        self.key = key
+        self.key_func = key_func
+        self.channel = channel
+        self.in_func_group = in_func_group
+    
+
 class BusObject:
-    def __init__(self, response, *, bus=None):
+    sensor_address_range = None
+
+    def __init__(self, response: EltakoDiscoveryReply, *, bus=None):
         super().__init__()
 
         self.discovery_response = response
@@ -77,9 +172,47 @@ class BusObject:
         it."""
         raise UnrecognizedUpdate("Device is not expected to send updates")
 
+    async def get_registered_sensors(self, sensor_range:range, in_func_group:int) -> [SensorInfo]:
+        result = []
+        for i in sensor_range:
+            mem_line:bytes = await self.read_mem_line(i)
+            s_adr:bytes = mem_line[0:4]
+            key = int(mem_line[4])
+            func = int(mem_line[5])
+            ch = int(mem_line[6])
+
+            address_off_set = 0
+
+            if int.from_bytes(s_adr, "big") > 0:
+                while ch > 0:
+                    if ch & 0x1 == 1:
+                        dev_adr:int = self.address + address_off_set
+
+                        result.append(
+                            SensorInfo(
+                                dev_type = self.__class__.__name__,
+                                sensor_id = s_adr,
+                                dev_adr = dev_adr.to_bytes(4, byteorder = 'big'),
+                                key = key,
+                                dev_id = int(self.address),
+                                key_func = func,
+                                channel = address_off_set+1,
+                                in_func_group=in_func_group
+                                ))
+                    ch = ch >> 1
+                    address_off_set += 1
+
+        return result
+    
+    async def get_all_sensors(self) -> [SensorInfo]:
+        return []
+        # return await self.get_registered_sensors(self.sensor_address_range)
+
+
 class FAM14(BusObject):
     size = 1
     discovery_name = bytes((0x07, 0xff))
+    sensor_address_range = range(0,0)
 
     @classmethod
     def annotate_memory(cls, mem):
@@ -89,10 +222,18 @@ class FAM14(BusObject):
                     "Base address")
         }
                 
+    async def get_base_id(self) -> str:
+        """Gets base id from FAM14 memory."""
+        mem_line = await self.read_mem_line(1)
+        return b2s(mem_line[0:4])
 
 class FAE14SSR(BusObject):
     size = 2
     discovery_name = bytes((0x04, 0x16))
+    sensor_address_range = range(14, 127)
+    thermostat_address_range = range(8,9)
+    temp_sensor_range = range(10,11)
+    smart_home_controller_address_range = range(12,13)
 
     @classmethod
     def annotate_memory(cls, mem):
@@ -106,11 +247,20 @@ class FAE14SSR(BusObject):
                     "-- -- -- -- dt dt -- --", "temp offset channel 1 & 2"),
                 7: MemoryFileNibbleExplanationComment(
                     "a  a  hc tp hc tp  tt tt", ""),
-                8: MemoryFileStartOfSectionComment("function group 1 / Temp Sensor"),
-                10: MemoryFileStartOfSectionComment("function group 2 / Temp Controller"),
+                8: MemoryFileStartOfSectionComment("function group 1 / Temp Controller"),
+                10: MemoryFileStartOfSectionComment("function group 2 / Temp Sensor"),
                 12: MemoryFileStartOfSectionComment("function group 3 / Smart Home SW"),
                 14: MemoryFileStartOfSectionComment("function group 3 / switches, contacts, ..."),
                 }
+    
+    async def get_all_sensors(self) -> [SensorInfo]:
+        result = []
+        result.extend( await self.get_registered_sensors(self.thermostat_address_range, 1 ))
+        result.extend( await self.get_registered_sensors(self.temp_sensor_range, 2 ))
+        # 3 = home automatoin
+        result.extend( await self.get_registered_sensors(self.sensor_address_range, 4 ))
+        return result
+
 
 class DimmerStyle(BusObject):
     """Devices that work just the same as a FUD14. FSG14_1_10V appears to
@@ -259,11 +409,12 @@ class FUD14(DimmerStyle):
     size = 1
     discovery_name = bytes((0x04, 0x04))
     has_subchannels = False
+    sensor_address_range = range(12, 127)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.programmable_dimmer = (12, self.memory_size)
-        self.gfvs_code = 31
+        self.gfvs_code = KeyFunction.DIMMING_VALUE_FROM_CONTROLLER
 
 
 class FUD14_800W(DimmerStyle):
@@ -274,7 +425,7 @@ class FUD14_800W(DimmerStyle):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.programmable_dimmer = (12, self.memory_size)
-        self.gfvs_code = 32
+        self.gfvs_code = KeyFunction.DIMMING_VALUE_FROM_CONTROLLER
 
 
 class HasProgrammableRPS:
@@ -378,7 +529,10 @@ class FSR14(BusObject, HasProgrammableRPS):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.programmable_rps = (12, self.memory_size)
-        self.gfvs_code = 51
+        self.gfvs_code = KeyFunction.SWITCHING_STATE_FROM_CONTROLLER
+        self.sensor_address_range = range(5, 41)
+
+
 
     async def show_off(self):
         await super().show_off()
@@ -436,6 +590,9 @@ class FSR14(BusObject, HasProgrammableRPS):
             raise UnrecognizedUpdate("Telegram is not a plain on or off message")
 
         return {subchannel: state}
+    
+    async def get_all_sensors(self) -> [SensorInfo]:
+        return await self.get_registered_sensors(self.sensor_address_range, 2)
 
 class FSR14_1x(FSR14):
     discovery_name = bytes((0x04, 0x01))
@@ -456,6 +613,7 @@ class F4SR14_LED(FSR14):
 class FSB14(BusObject, HasProgrammableRPS):
     size = 2
     discovery_name = bytes((0x04, 0x06))
+    sensor_address_range = range(17, 135)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -543,6 +701,7 @@ class F3Z14D(BusObject):
 class FMZ14(BusObject):
     discovery_name = bytes((0x04, 0x0e))
     size = 1
+    sensor_address_range = range(1, 120)
 
 class FWG14MS(BusObject):
     discovery_name = bytes((0x04, 0x1a))
