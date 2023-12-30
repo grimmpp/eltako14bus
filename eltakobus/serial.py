@@ -2,11 +2,171 @@ import asyncio
 import time
 import logging
 
+import threading
+import queue
+import serial
+
 import serial_asyncio
 
 from .bus import BusInterface
 from .error import ParseError, TimeoutError
-from .message import ESP2Message, prettify, EltakoTimeout
+from .message import ESP2Message, prettify, EltakoTimeout, EltakoPoll, EltakoMessage
+
+class RS485SerialInterfaceV2(BusInterface, threading.Thread):
+
+    class ReceiverQueue():
+        def __init__(self, receive: queue.Queue, mutex: threading.Lock):
+            self._receive = receive
+            self._mutex = mutex
+
+        async def get(self) -> any:
+            return self._receive.get()
+        
+        def empty(self) -> bool:
+            return self._receive.empty()
+
+
+    def __init__(self, filename, log=None, callback=None, baud_rate=57600):
+        super(RS485SerialInterfaceV2, self).__init__()
+        self._filename = filename
+        self._baud_rate = baud_rate
+
+        self.log = log or logging.getLogger('eltakobus.serial')
+
+        # Create an event to stop the thread
+        self._stop_flag = threading.Event()
+        # Input buffer
+        self._buffer = []
+        self.__mutex = threading.Lock()
+        # Setup packet queues
+        self.transmit = queue.Queue()
+        self.receive = queue.Queue()
+        self.received = RS485SerialInterfaceV2.ReceiverQueue(self.receive, self.__mutex)
+        # Set the callback method
+        self.__callback = callback
+        # serial
+        self.__serial = None
+
+        self._suppress = []
+
+        # reconnection timeout
+        self.__recon_time = 10
+
+    def stop(self):
+        self._stop_flag.set()
+
+    async def base_exchange(self, request:ESP2Message):
+        self._send(request)
+
+    def _send(self, request:ESP2Message):
+        if self.suppress_echo:
+            self._suppress.append((time.time(), request.serialize()))
+        self.transmit.put((time.time(), request))
+
+    def echotest(self):
+        echotest = b'\xff\x00\xff' * 5 # long enough that it can not be contained in any EnOcean message
+
+        for write_attempt in range(5):
+            # send echo
+            self.__serial.write(echotest)
+            # receive echo
+            response = self.__serial.read_until( echotest )
+
+            if echotest == response: return True
+            
+        return False
+
+
+    def run(self):
+        self.log.info('Serial communication started')
+        while not self._stop_flag.is_set():
+            try:
+                with self.__mutex:
+                    # reconnect
+                    if self.__serial is None:
+                        self.__serial = serial.serial_for_url(self._filename, self._baud_rate, timeout=0.1)
+                        self.log.info("Established serial connection to %s - baudrate: %d", self._filename, self._baud_rate)
+
+                        self.log.debug("Performing echo detection")
+                        self.suppress_echo = self.echotest()
+                        if self.suppress_echo:
+                            self.log.debug("Echo detected on the line, enabling suppression")
+                        else:
+                            self.log.debug("No echo detected on the line")
+
+                    # send messages
+                    while not self.transmit.empty(): 
+                        ser_msg = self.transmit.get()
+                        # dropp old messages
+                        if ser_msg[0] < time.time() - 30:
+                            self.log.info("Dropping echo-suppressed message because it timed out without being echoed")
+                        else:
+                            self.__serial.write(ser_msg[1].serialize())
+                            self.log.debug("Sent message: %s", ser_msg[1])
+
+                    # read from bus
+                    self._buffer.extend( self.__serial.read_all() )
+
+                    # process received messages from bus
+                    while len(self._buffer) >= 14:
+                        try:
+                            parsed_msg = prettify( ESP2Message.parse(bytes(self._buffer[:14])) )
+                            # self.log.debug("Received Message: %s", parsed_msg)
+                        except ParseError:
+                            self._buffer = self._buffer[1:]
+                        else:
+                            self._buffer = self._buffer[14:]
+                            if self.__callback is None:
+                                self.receive.put(parsed_msg)
+                            else: 
+                                self.__callback(parsed_msg)
+                time.sleep(.001)
+                
+
+            except serial.SerialException as e:
+                self.log.error(e)
+                self.__serial.close()
+                self.__serial = None
+                self.log.info("Serial communication crashed. Wait %s seconds for reconnection.", self.__recon_time)
+                time.sleep(self.__recon_time)
+
+        if self.__serial is not None:
+            self.__serial.close()
+        self.log.info('Serial communication stopped')
+
+
+    async def exchange(self, request: ESP2Message, responsetype=None) -> ESP2Message:
+        """Send a request and return a response depending on responsetype as
+        BusInterface.exchange does.
+        """
+
+        with self.__mutex:
+            # empty queue
+            while not self.receive.empty():
+                self.receive.get()
+
+            # send request
+            self._send(request)
+
+        while self.transmit.qsize() > 0:
+            time.sleep(0.001)
+
+        # receive response
+        while True:
+            try:
+                msg = self.receive.get_nowait()
+                if responsetype is None:
+                    return msg
+                else:
+                    if isinstance(msg, responsetype):
+                        return msg
+                    if isinstance(msg, EltakoTimeout):
+                        return TimeoutError
+            except queue.Empty:
+                pass
+            time.sleep(0.001)
+
+
 
 class RS485SerialInterface(BusInterface, asyncio.Protocol):
     """Implementation of the BusInterface as POSIX Serial device.

@@ -7,6 +7,7 @@ import os
 import time
 import sys
 from pathlib import Path
+import logging
 
 from typing import Optional
 
@@ -239,7 +240,7 @@ async def reprogram(bus, infile):
 
     print("Unmodified lines: %d. Modified lines: %d"%(seen, delta))
 
-async def listen(bus, ensure_unlocked):
+async def listen(bus:BusInterface, ensure_unlocked):
     if ensure_unlocked:
         await lock_bus(bus)
         await unlock_bus(bus)
@@ -389,6 +390,8 @@ def main():
     p.add_argument("--cache", help="Store cachable responses locally", action='store_true')
     p.add_argument("--cachefile", help="File to cache responses at", type=Path)
     p.add_argument("--preread", help="Enumerate bus and read devices' memory before executing the command", action='store_true')
+    p.add_argument("--log_level", help="Log level", default="info")
+    p.add_argument("--serial_lib_version", default=2)
     subp = p.add_subparsers(metavar="command", dest="command")
 
     p_enumerate = subp.add_parser("enumerate", help="Explore the bus")
@@ -425,6 +428,8 @@ def main():
 
     opts = p.parse_args()
 
+    logging.basicConfig(level=opts.log_level.upper())
+
     if opts.command is None:
         raise p.error("A command is required.")
 
@@ -440,10 +445,15 @@ def main():
         bus = CoAPInterface(context, opts.rawuri)
         cache_rawpart = opts.rawuri.replace('/', '-')
     if opts.eltakobus:
-        bus_ready = asyncio.Future(loop=loop)
-        bus = RS485SerialInterface(opts.eltakobus, baud_rate=int(opts.baud_rate))
-        asyncio.ensure_future(bus.run(loop, conn_made=bus_ready), loop=loop)
-        loop.run_until_complete(bus_ready)
+        if opts.serial_lib_version == 2:
+            bus = RS485SerialInterfaceV2(opts.eltakobus, baud_rate=int(opts.baud_rate))
+            bus.start()
+        elif opts.serial_lib_version == 1:
+            bus_ready = asyncio.Future(loop=loop)
+            bus = RS485SerialInterface(opts.eltakobus, baud_rate=int(opts.baud_rate))
+            asyncio.ensure_future(bus.run(loop, conn_made=bus_ready), loop=loop)
+            loop.run_until_complete(bus_ready)
+
         cache_rawpart = opts.eltakobus.replace('/', '-')
 
     if opts.cache:
@@ -506,6 +516,8 @@ def main():
 
     if result is not None:
         print(result)
+
+    bus.stop()
 
 if __name__ == "__main__":
     main()
