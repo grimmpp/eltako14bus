@@ -47,6 +47,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
         # serial
         self.__serial = None
 
+        self.suppress_echo = False
         self._suppress = []
 
         # reconnection timeout
@@ -103,6 +104,8 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                         else:
                             self.__serial.write(ser_msg[1].serialize())
                             self.log.debug("Sent message: %s", ser_msg[1])
+                            time.sleep(.001)
+                            self.transmit.task_done()
 
                     # read from bus
                     self._buffer.extend( self.__serial.read_all() )
@@ -120,7 +123,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                                 self.receive.put(parsed_msg)
                             else: 
                                 self.__callback(parsed_msg)
-                time.sleep(.001)
+                time.sleep(.0001)
                 
 
             except serial.SerialException as e:
@@ -139,32 +142,44 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
         """Send a request and return a response depending on responsetype as
         BusInterface.exchange does.
         """
+        timeout = 1
+        send_time = 0
+        retries = 3
+        while retries > 0:
 
-        with self.__mutex:
-            # empty queue
-            while not self.receive.empty():
-                self.receive.get()
+            with self.__mutex:
+                # empty queue
+                while not self.receive.empty():
+                    self.receive.get()
 
-            # send request
-            self._send(request)
+                # send request
+                send_time = time.time()
+                self._send(request)
 
-        while self.transmit.qsize() > 0:
-            time.sleep(0.001)
+            while self.transmit.unfinished_tasks > 0:
+                time.sleep(0.0001)
 
-        # receive response
-        while True:
-            try:
-                msg = self.receive.get_nowait()
-                if responsetype is None:
-                    return msg
-                else:
-                    if isinstance(msg, responsetype):
+            # receive response
+            while True:
+                try:
+                    msg = self.receive.get_nowait()
+                    if responsetype is None:
                         return msg
-                    if isinstance(msg, EltakoTimeout):
-                        return TimeoutError
-            except queue.Empty:
-                pass
-            time.sleep(0.001)
+                    else:
+                        if isinstance(msg, responsetype):
+                            return msg
+                        if isinstance(msg, EltakoTimeout):
+                            raise TimeoutError
+                except queue.Empty:
+                    pass
+
+                # retry
+                if time.time() - send_time > timeout:
+                    self.log.debug("Retry sending message. Timeout (%ds) reached.", timeout)
+                    retries = retries-1
+                    break
+
+                time.sleep(0.0001)
 
 
 
@@ -362,6 +377,7 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
                     return False
                 else:
                     match.set_result(parsed)
+                    self.log.debug("Received message %s", parsed)
                     self._hook = None
                     return True
 
@@ -381,6 +397,7 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
             self._hook = None
 
     async def send(self, request):
+        self.log.debug("Sent message: %s", request)
         serialized = request.serialize()
         if self.suppress_echo:
             self._suppress.append((time.time(), serialized))
