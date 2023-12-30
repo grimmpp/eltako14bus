@@ -446,7 +446,7 @@ def main():
         cache_rawpart = opts.rawuri.replace('/', '-')
     if opts.eltakobus:
         if opts.serial_lib_version == 2:
-            bus = RS485SerialInterfaceV2(opts.eltakobus, baud_rate=int(opts.baud_rate))
+            bus = RS485SerialInterfaceV2(opts.eltakobus, baud_rate=int(opts.baud_rate), reconnection_timeout=1)
             bus.start()
         elif opts.serial_lib_version == 1:
             bus_ready = asyncio.Future(loop=loop)
@@ -517,7 +517,8 @@ def main():
     if result is not None:
         print(result)
 
-    bus.stop()
+    if opts.serial_lib_version == 2:
+        bus.stop()
 
 if __name__ == "__main__":
     main()

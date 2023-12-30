@@ -26,7 +26,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
             return self._receive.empty()
 
 
-    def __init__(self, filename, log=None, callback=None, baud_rate=57600):
+    def __init__(self, filename, log=None, callback=None, baud_rate=57600, reconnection_timeout:float=10):
         super(RS485SerialInterfaceV2, self).__init__()
         self._filename = filename
         self._baud_rate = baud_rate
@@ -51,7 +51,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
         self._suppress = []
 
         # reconnection timeout
-        self.__recon_time = 10
+        self.__recon_time = reconnection_timeout
 
     def stop(self):
         self._stop_flag.set()
@@ -77,6 +77,8 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
             
         return False
 
+    def is_active(self) -> bool:
+        return not self._stop_flag.is_set() and self.__serial is not None
 
     def run(self):
         self.log.info('Serial communication started')
@@ -128,7 +130,6 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
 
             except serial.SerialException as e:
                 self.log.error(e)
-                self.__serial.close()
                 self.__serial = None
                 self.log.info("Serial communication crashed. Wait %s seconds for reconnection.", self.__recon_time)
                 time.sleep(self.__recon_time)
