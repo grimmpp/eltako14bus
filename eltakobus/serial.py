@@ -125,7 +125,9 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                                 self.receive.put(parsed_msg)
                             else: 
                                 self.__callback(parsed_msg)
-                time.sleep(.0001)
+
+                # required to not utilize the whole CPU power
+                time.sleep(.00001)
                 
 
             except serial.SerialException as e:
@@ -158,7 +160,8 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                 self._send(request)
 
             while self.transmit.unfinished_tasks > 0:
-                time.sleep(0.0001)
+                # required to not utilize the whole CPU power
+                time.sleep(.00001) 
 
             # receive response
             while True:
@@ -180,7 +183,8 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                     retries = retries-1
                     break
 
-                time.sleep(0.0001)
+                # required to not utilize the whole CPU power
+                time.sleep(.00001)
 
 
 
