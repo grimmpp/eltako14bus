@@ -20,7 +20,7 @@
             "request": "launch",
             "program": "eltakotool.py",
             // "args": ["--eltakobus", "COM10", "--baud_rate", "9600", "listen"], // for FAM14-USB
-            "args": ["--eltakobus", "COM10", "--log_level", "debug", "listen"],    // for FAM14, FGW15-USB ...
+            "args": ["--eltakobus", "COM10", "--log_level", "debug", "listen", "--ensure-unlocked"],    // for FAM14, FGW15-USB ...
             "console": "integratedTerminal",
             "justMyCode": true
         },

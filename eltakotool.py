@@ -448,6 +448,7 @@ def main():
         if opts.serial_lib_version == 2:
             bus = RS485SerialInterfaceV2(opts.eltakobus, baud_rate=int(opts.baud_rate), reconnection_timeout=1)
             bus.start()
+            bus.is_serial_connected.wait()
         elif opts.serial_lib_version == 1:
             bus_ready = asyncio.Future(loop=loop)
             bus = RS485SerialInterface(opts.eltakobus, baud_rate=int(opts.baud_rate))

@@ -2,6 +2,9 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.0.33
+- new serial communication added which is running in a thread instead of event loop and which can automatically recover after connection loss.
+
 ## 0.0.32
 - Changes for devices and sensor discovery added.
 

@@ -24,6 +24,9 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
         
         def empty(self) -> bool:
             return self._receive.empty()
+        
+        def get_nowait(self):
+            return self._receive.get_nowait()
 
 
     def __init__(self, filename, log=None, callback=None, baud_rate=57600, reconnection_timeout:float=10):
@@ -53,6 +56,8 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
         # reconnection timeout
         self.__recon_time = reconnection_timeout
 
+        self.is_serial_connected = threading.Event()
+
     def stop(self):
         self._stop_flag.set()
 
@@ -78,7 +83,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
         return False
 
     def is_active(self) -> bool:
-        return not self._stop_flag.is_set() and self.__serial is not None
+        return not self._stop_flag.is_set() and self.is_serial_connected.is_set()
 
     def run(self):
         self.log.info('Serial communication started')
@@ -89,6 +94,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                     if self.__serial is None:
                         self.__serial = serial.serial_for_url(self._filename, self._baud_rate, timeout=0.1)
                         self.log.info("Established serial connection to %s - baudrate: %d", self._filename, self._baud_rate)
+                        self.is_serial_connected.set()
 
                         self.log.debug("Performing echo detection")
                         self.suppress_echo = self.echotest()
@@ -130,7 +136,8 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                 time.sleep(.00001)
                 
 
-            except serial.SerialException as e:
+            except (serial.SerialException, IOError) as e:
+                self.is_serial_connected.clear()
                 self.log.error(e)
                 self.__serial = None
                 self.log.info("Serial communication crashed. Wait %s seconds for reconnection.", self.__recon_time)
@@ -138,6 +145,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
 
         if self.__serial is not None:
             self.__serial.close()
+        self.is_serial_connected.clear()
         self.log.info('Serial communication stopped')
 
 
@@ -145,6 +153,11 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
         """Send a request and return a response depending on responsetype as
         BusInterface.exchange does.
         """
+
+        # callback and exchange cannot be used at the same time.
+        if self.__callback is not None:
+            raise RuntimeError("exchange is not reentrant, please serialize your access to the bus yourself.")
+
         timeout = 1
         send_time = 0
         retries = 3
