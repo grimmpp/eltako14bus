@@ -48,7 +48,7 @@ class ESP2Message:
 
     @classmethod
     def parse(cls, data):
-        if data[:2] != b"\xa5\x5a":
+        if data[:2] != b"\xa5\x5a":     # 165 90
             raise ParseError("No preamble found")
         if len(data) != 14:
             raise ParseError("Invalid message length")

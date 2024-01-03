@@ -9,7 +9,6 @@
             "type": "python",
             "request": "launch",
             "program": "eltakotool.py",
-            //Linux listen to bus
             // "args": ["--eltakobus", "/dev/ttyUSB1", "--baud_rate", "9600", "listen"], // for FAM14-USB
             "args": ["--eltakobus", "/dev/ttyUSB2", "listen"],    // for FAM14, FGW15-USB ...
             "console": "integratedTerminal",
@@ -20,9 +19,8 @@
             "type": "python",
             "request": "launch",
             "program": "eltakotool.py",
-            //Linux listen to bus
             // "args": ["--eltakobus", "COM10", "--baud_rate", "9600", "listen"], // for FAM14-USB
-            "args": ["--eltakobus", "COM10", "listen"],    // for FAM14, FGW15-USB ...
+            "args": ["--eltakobus", "COM10", "--log_level", "debug", "listen", "--ensure-unlocked"],    // for FAM14, FGW15-USB ...
             "console": "integratedTerminal",
             "justMyCode": true
         },
@@ -31,7 +29,16 @@
             "type": "python",
             "request": "launch",
             "program": "eltakotool.py",
-            "args": ["--eltakobus", "COM10", "dump", "device-mem-dump.txt"], // for FAM14
+            "args": ["--eltakobus", "COM10", "--log_level", "debug", "dump", "device-mem-dump.txt"], // for FAM14
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "eltakotool send_raw message (Windows)",
+            "type": "python",
+            "request": "launch",
+            "program": "eltakotool.py",
+            "args": ["--eltakobus", "COM10", "--log_level", "debug", "send_raw", "0b", "05", "30", "00", "00", "00", "fe", "db", "da", "04", "30"], 
             "console": "integratedTerminal",
             "justMyCode": true
         },

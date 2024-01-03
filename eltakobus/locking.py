@@ -60,7 +60,7 @@ UNLOCKED = "Bus was successfully unlocked as acknowledged by a FAM"
 PROBABLY_UNLOCKED = "No response to unlock, assuming that no FAM is present on the bus or the bus was not locked before"
 
 async def unlock_bus(bus):
-    response = await bus.exchange(EltakoBusUnlock(), EltakoMessage)
+    response = await bus.exchange(EltakoBusUnlock(), EltakoDiscoveryReply) # EltakoMessage)
 
     try:
         response = EltakoDiscoveryReply.parse(response.serialize())
