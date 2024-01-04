@@ -2,6 +2,9 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.0.34
+- Corrected telegram signals for window handle positions.
+
 ## 0.0.33
 - new serial communication added which is running in a thread instead of event loop and which can automatically recover after connection loss.
 

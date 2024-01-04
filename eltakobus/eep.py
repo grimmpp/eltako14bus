@@ -91,7 +91,32 @@ class F6_02_02(_RockerSwitch):
 # MARK: - Window handle
 # ======================================
 
+class WindowHandlePosition(int, Enum):
+    CLOSED = 0
+    OPEN = 1
+    TILT = 2
+
+    @classmethod
+    def get_position(cls, movement:int):
+        # left  to down 0b1111
+        # right to down 0b1111
+        if movement == 0xF: 
+            return WindowHandlePosition.CLOSED
+        # up to left    0b11X0
+        # down to left  0b11X0
+        # up to right   0b11X0
+        # down to right 0b11X0
+        elif movement == 0xC or movement == 0xE:
+            return WindowHandlePosition.OPEN
+        # right to up 0b1101
+        # left to up  0b1101
+        elif movement == 0xD:
+            return WindowHandlePosition.TILT
+        
+        raise Exception(f"Movement data ({movement}) not handled")
+
 class _WindowHandle(EEP):
+
     @classmethod
     def decode_message(cls, msg):
         if msg.org != 0x05:
@@ -99,7 +124,9 @@ class _WindowHandle(EEP):
         
         movement = msg.data[0]
         
-        return cls(movement)
+        handle_position = WindowHandlePosition.get_position(movement >> 4)
+
+        return cls(movement, handle_position)
 
     def encode_message(self, address):
         data = bytearray([0])
@@ -112,9 +139,14 @@ class _WindowHandle(EEP):
     @property
     def movement(self):
         return self._movement
+    
+    @property
+    def handle_position(self):
+        return self._handle_position
 
-    def __init__(self, movement):
+    def __init__(self, movement, handle_position: WindowHandlePosition):
         self._movement = movement
+        self._handle_position = handle_position
 
 class F6_10_00(_WindowHandle):
     """Windows handle"""
