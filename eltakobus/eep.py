@@ -860,20 +860,22 @@ class _TemperatureAndHumiditySensor(EEP):
         if msg.org != 0x07:
             raise WrongOrgError
         
+        learn_button = (msg.data[3] & 0x08) >> 3
+
         # 0 .. 100%
         humidity = (msg.data[1] / cls.usr) * 100.0
         # -20°C .. +60°C
         temperature = ((msg.data[2] / cls.usr) * (cls.temp_max - cls.temp_min)) + cls.temp_min
         
 
-        return cls(temperature,humidity)
+        return cls(temperature,humidity,learn_button)
 
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
         data[0] = 0x00
         data[1] = int((self.humidity / 100.0) * self.usr)
         data[2] = int((self.current_temperature / (self.temp_max - self.temp_min)) * self.usr)
-        data[3] = 0x00
+        data[3] = (self.learn_button << 3)
         
         status = 0x00
 
@@ -887,11 +889,74 @@ class _TemperatureAndHumiditySensor(EEP):
     def humidity(self):
         return self._humidity
     
-    def __init__(self, temperature, humidity):
+    @property
+    def learn_button(self):
+        return self.learn_button
+    
+    def __init__(self, temperature, humidity,learn_button):
         self._temperature = temperature
         self._humidity = humidity
+        self._learn_button = learn_button
 
 class A5_04_02(_TemperatureAndHumiditySensor):
+    """Temperature and Humidity Sensor"""
+
+
+class _TemperatureAndHumiditySensor2(EEP):
+    temp_min = 0.0
+    temp_max = 40.0
+    usr = 250.0 # unscaled range 
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        
+        learn_button = (msg.data[3] & 0x08) >> 3
+
+        temp_availability = (msg.data[3] & 0x02) >> 1
+
+        # 0 .. 100%
+        humidity = (msg.data[1] / cls.usr) * 100.0
+        # -20°C .. +60°C
+        temperature = (msg.data[2] / cls.usr) * cls.temp_max
+        
+        return cls(temperature, humidity, learn_button, temp_availability)
+
+    def encode_message(self, address, learn_button,temp_availability):
+        data = bytearray([0, 0, 0, 0])
+        data[0] = 0x00
+        data[1] = int((self.humidity / 100.0) * self.usr)
+        data[2] = int((self.current_temperature / self.temp_max) * self.usr)
+        data[3] = (self.learn_button << 3) | (self.temp_availability << 1)
+        
+        status = 0x00
+
+        return Regular4BSMessage(address, status, data, True)
+
+    @property
+    def current_temperature(self):
+        return self._temperature
+    
+    @property
+    def humidity(self):
+        return self._humidity
+    
+    @property
+    def temp_availability(self):
+        return self._temp_availability
+    
+    @property
+    def learn_button(self):
+        return self.learn_button
+
+    def __init__(self, temperature, humidity,learn_button, temp_availability):
+        self._temperature = temperature
+        self._humidity = humidity
+        self._learn_button = learn_button
+        self._temp_availability = temp_availability
+
+class A5_04_01(_TemperatureAndHumiditySensor2):
     """Temperature and Humidity Sensor"""
 
 # ======================================
@@ -1065,3 +1130,59 @@ class _EltakoShutterCommand(EEP):
 
 class H5_3F_7F(_EltakoShutterCommand):
     """Eltako Shutter Command"""
+
+
+# ======================================
+# MARK: - Occupancy Sensor
+# ======================================
+    
+class _OccupancySensor(EEP):
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        
+        
+        support_voltage = msg.data[0] / 250.0 * 5.0
+        
+        pir_status = msg.data[2]
+        pir_status_on = pir_status >= 128
+        
+        learn_button = (msg.data[3] & 0x08) >> 3
+        support_volrage_availability = msg.data[3] & 0x01
+
+        return cls(support_voltage, pir_status, pir_status_on, learn_button, support_volrage_availability)
+
+    def encode_message(self, address):
+        data = bytearray([0, 0, 0, 0])
+        
+        data[1] = self._support_voltage / 5.0 * 250.0
+        data[2] = self._pir_status
+        data[3] = (self.learn_button << 3) | self._support_volrage_availability
+
+        status = 0x00
+        
+        return Regular4BSMessage(address, status, data, True)
+
+    @property
+    def time(self):
+        return self._time
+
+    @property
+    def command(self):
+        return self._command
+
+    @property
+    def learn_button(self):
+        return self._learn_button
+
+    def __init__(self, support_voltage, pir_status, pir_status_on, learn_button, support_volrage_availability):
+        self._support_voltage = support_voltage
+        self._pir_status = pir_status
+        self._pir_status_on = pir_status_on
+        self._learn_button = learn_button
+        self._support_volrage_availability = support_volrage_availability
+
+class A5_07_01(_OccupancySensor):
+    """Occupancy Sensor"""
