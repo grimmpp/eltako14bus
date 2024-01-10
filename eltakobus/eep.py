@@ -1166,16 +1166,24 @@ class _OccupancySensor(EEP):
         return Regular4BSMessage(address, status, data, True)
 
     @property
-    def time(self):
-        return self._time
+    def support_volrage_availability(self):
+        return self._support_volrage_availability
 
     @property
-    def command(self):
-        return self._command
+    def support_voltage(self):
+        return self._support_voltage
 
     @property
     def learn_button(self):
         return self._learn_button
+
+    @property
+    def pir_status(self):
+        return self._pir_status
+    
+    @property
+    def pir_status_on(self):
+        return self._pir_status_on
 
     def __init__(self, support_voltage, pir_status, pir_status_on, learn_button, support_volrage_availability):
         self._support_voltage = support_voltage
