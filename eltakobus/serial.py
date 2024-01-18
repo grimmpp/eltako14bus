@@ -69,6 +69,9 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
             self._suppress.append((time.time(), request.serialize()))
         self.transmit.put((time.time(), request))
 
+    def set_callback(self, callback):
+        self.__callback = callback
+
     def echotest(self):
         echotest = b'\xff\x00\xff' * 5 # long enough that it can not be contained in any EnOcean message
 
@@ -94,14 +97,15 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                     if self.__serial is None:
                         self.__serial = serial.serial_for_url(self._filename, self._baud_rate, timeout=0.1)
                         self.log.info("Established serial connection to %s - baudrate: %d", self._filename, self._baud_rate)
-                        self.is_serial_connected.set()
-
+                        
                         self.log.debug("Performing echo detection")
                         self.suppress_echo = self.echotest()
                         if self.suppress_echo:
                             self.log.debug("Echo detected on the line, enabling suppression")
                         else:
                             self.log.debug("No echo detected on the line")
+                        
+                        self.is_serial_connected.set()
 
                     # send messages
                     while not self.transmit.empty(): 
