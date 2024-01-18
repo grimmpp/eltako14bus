@@ -182,7 +182,7 @@ class KeyFunction(IntEnum):
 
 class SensorInfo():
 
-    def __init__(self, sensor_id:bytes, dev_type:str, dev_id:int, dev_adr:bytes, key:int, key_func:int, channel:int, in_func_group:int):
+    def __init__(self, sensor_id:bytes, dev_type:str, dev_id:int, dev_adr:bytes, key:int, key_func:int, channel:int, in_func_group:int, memory_line:int):
         self.sensor_id = sensor_id
         self.sensor_id_str = b2s(sensor_id)
         self.dev_type = dev_type
@@ -193,6 +193,7 @@ class SensorInfo():
         self.key_func = key_func
         self.channel = channel
         self.in_func_group = in_func_group
+        self.memory_line = memory_line
     
 
 class BusObject:
@@ -290,7 +291,8 @@ class BusObject:
                                 dev_id = int(self.address),
                                 key_func = func,
                                 channel = address_off_set+1,
-                                in_func_group=in_func_group
+                                in_func_group=in_func_group,
+                                memory_line=i
                                 ))
                     ch = ch >> 1
                     address_off_set += 1
@@ -319,6 +321,16 @@ class FAM14(BusObject):
         """Gets base id from FAM14 memory."""
         mem_line = await self.read_mem_line(1)
         return b2s(mem_line[0:4])
+    
+    async def get_base_id_in_bytes(self) -> bytes:
+        """Gets base id from FAM14 memory."""
+        mem_line = await self.read_mem_line(1)
+        return mem_line[0:4]
+
+    async def get_base_id_in_int(self) -> int:
+        """Gets base id from FAM14 memory."""
+        mem_line = await self.read_mem_line(1)
+        return int.from_bytes(mem_line[0:4], "big") 
 
 class FAE14SSR(BusObject):
     size = 2

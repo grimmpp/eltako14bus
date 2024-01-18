@@ -2,6 +2,16 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.0.37
+- extentions for management tooling
+
+## 0.0.36
+- fix of occupancy sensor (EEP A5-07-01)
+
+## 0.0.35
+- Status messages for temperature and humidity sensor (EEP A5-04-01) added
+- Status messages for occupancy sensor (EEP A5-07-01) added
+
 ## 0.0.34
 - Corrected telegram signals for window handle positions.
 
