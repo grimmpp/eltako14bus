@@ -58,6 +58,19 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
 
         self.is_serial_connected = threading.Event()
 
+        self.status_changed_handler = None
+
+    def set_status_changed_handler(self, handler) -> None:
+        self.status_changed_handler = handler
+        self._fire_status_change_handler(self.is_active())
+
+    def _fire_status_change_handler(self, connected:bool) -> None:
+        try:
+            if self.status_changed_handler:
+                self.status_changed_handler(connected)
+        except Exception as e:
+            pass
+
     def stop(self):
         self._stop_flag.set()
 
@@ -95,6 +108,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
 
     def run(self):
         self.log.info('Serial communication started')
+        self._fire_status_change_handler(connected=False)
         while not self._stop_flag.is_set():
             try:
                 with self.__mutex:
@@ -111,6 +125,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                             self.log.debug("No echo detected on the line")
                         
                         self.is_serial_connected.set()
+                        self._fire_status_change_handler(connected=True)
 
                     # send messages
                     while not self.transmit.empty(): 
@@ -146,12 +161,14 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                 
 
             except (serial.SerialException, IOError) as e:
+                self._fire_status_change_handler(connected=False)
                 self.is_serial_connected.clear()
                 self.log.error(e)
                 self.__serial = None
                 self.log.info("Serial communication crashed. Wait %s seconds for reconnection.", self.__recon_time)
                 time.sleep(self.__recon_time)
 
+        self._fire_status_change_handler(connected=False)
         if self.__serial is not None:
             self.__serial.close()
         self.is_serial_connected.clear()
