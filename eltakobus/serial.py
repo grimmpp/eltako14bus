@@ -88,6 +88,11 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
     def is_active(self) -> bool:
         return not self._stop_flag.is_set() and self.is_serial_connected.is_set()
 
+    def reconnect(self):
+        self._stop_flag.set()
+        self._stop_flag.wait()
+        self.start()
+
     def run(self):
         self.log.info('Serial communication started')
         while not self._stop_flag.is_set():
