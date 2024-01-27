@@ -29,10 +29,11 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
             return self._receive.get_nowait()
 
 
-    def __init__(self, filename, log=None, callback=None, baud_rate=57600, reconnection_timeout:float=10):
+    def __init__(self, filename, log=None, callback=None, baud_rate=57600, reconnection_timeout:float=10, delay_message:float=0.01):
         super(RS485SerialInterfaceV2, self).__init__()
         self._filename = filename
         self._baud_rate = baud_rate
+        self.delay_message = delay_message
 
         self.log = log or logging.getLogger('eltakobus.serial')
 
@@ -57,6 +58,19 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
         self.__recon_time = reconnection_timeout
 
         self.is_serial_connected = threading.Event()
+
+        self.status_changed_handler = None
+
+    def set_status_changed_handler(self, handler) -> None:
+        self.status_changed_handler = handler
+        self._fire_status_change_handler(self.is_active())
+
+    def _fire_status_change_handler(self, connected:bool) -> None:
+        try:
+            if self.status_changed_handler:
+                self.status_changed_handler(connected)
+        except Exception as e:
+            pass
 
     def stop(self):
         self._stop_flag.set()
@@ -88,14 +102,20 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
     def is_active(self) -> bool:
         return not self._stop_flag.is_set() and self.is_serial_connected.is_set()
 
+    def reconnect(self):
+        self._stop_flag.set()
+        self._stop_flag.wait()
+        self.start()
+
     def run(self):
         self.log.info('Serial communication started')
+        self._fire_status_change_handler(connected=False)
         while not self._stop_flag.is_set():
             try:
                 with self.__mutex:
                     # reconnect
                     if self.__serial is None:
-                        self.__serial = serial.serial_for_url(self._filename, self._baud_rate, timeout=0.1)
+                        self.__serial = serial.serial_for_url(self._filename, self._baud_rate, timeout=0.1, write_timeout=0.1)
                         self.log.info("Established serial connection to %s - baudrate: %d", self._filename, self._baud_rate)
                         
                         self.log.debug("Performing echo detection")
@@ -106,6 +126,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                             self.log.debug("No echo detected on the line")
                         
                         self.is_serial_connected.set()
+                        self._fire_status_change_handler(connected=True)
 
                     # send messages
                     while not self.transmit.empty(): 
@@ -116,7 +137,13 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                         else:
                             self.__serial.write(ser_msg[1].serialize())
                             self.log.debug("Sent message: %s", ser_msg[1])
-                            time.sleep(.001)
+                            # baud speed on the bus is 9600 and gateway usually have 57600
+                            # this means we need to watch out that the internal gateay buffer does not overflow
+                            # fam14 (baudrate 57600) delay_message=.001
+                            # fam14 (baudrate 9600) delay_message=.001
+                            # fam-usb (baudrate 9600) delay_message=.001
+                            # fgw14-usb (baudrate 57600) delay_message=.01
+                            time.sleep(self.delay_message)
                             self.transmit.task_done()
 
                     # read from bus
@@ -141,12 +168,14 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                 
 
             except (serial.SerialException, IOError) as e:
+                self._fire_status_change_handler(connected=False)
                 self.is_serial_connected.clear()
                 self.log.error(e)
                 self.__serial = None
                 self.log.info("Serial communication crashed. Wait %s seconds for reconnection.", self.__recon_time)
                 time.sleep(self.__recon_time)
 
+        self._fire_status_change_handler(connected=False)
         if self.__serial is not None:
             self.__serial.close()
         self.is_serial_connected.clear()

@@ -2,6 +2,16 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.0.40
+- fixed message overflow in fgw14-usb. RS485 bus is working with 9600 and baudrate can be set to 57600 for FGW14-USB. When sending many message (ca. 12) in a row the buffer of FGW14-USB is flowing over.
+- Added EEP H5-3F-7F for ensuring switches are programmed for cover (FSB14)
+
+## 0.0.39
+- status changed handler to serial connector added
+
+## 0.0.38
+- reconnect function for serial communication added
+
 ## 0.0.37
 - extentions for management tooling
 
