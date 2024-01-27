@@ -446,7 +446,7 @@ def main():
         cache_rawpart = opts.rawuri.replace('/', '-')
     if opts.eltakobus:
         if opts.serial_lib_version == 2:
-            bus = RS485SerialInterfaceV2(opts.eltakobus, baud_rate=int(opts.baud_rate), reconnection_timeout=1)
+            bus = RS485SerialInterfaceV2(opts.eltakobus, baud_rate=int(opts.baud_rate), reconnection_timeout=1, delay_message=0.001)
             bus.start()
             bus.is_serial_connected.wait()
         elif opts.serial_lib_version == 1:

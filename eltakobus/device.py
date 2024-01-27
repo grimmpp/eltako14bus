@@ -8,7 +8,7 @@ import yaml
 from .util import b2a, b2s, AddressExpression
 from .message import *
 from .error import UnrecognizedUpdate
-from .eep import EEP, A5_38_08, A5_12_01, F6_02_01, F6_02_02
+from .eep import EEP, A5_38_08, A5_12_01, F6_02_01, F6_02_02, H5_3F_7F
 
 
 
@@ -177,7 +177,7 @@ class KeyFunction(IntEnum):
     @classmethod
     def get_fhk_function_group_2(cls) -> []:
         return [cls.NO_FUNCTION,
-                cls.HUMIDITY_TEMPERATURE_SENSOR_FUTH,
+                cls.HUMIDITY_TEMPERATURE_SENSOR_FUTH_ACCORDING_TO_EEP_A5_10_12,
                 cls.HUMIDITY_TEMPERATURE_SENSOR_FUTH_TEMP_SETPOINT_ACCORDING_TO_EEP_A5_10_12_BUTH]
 
 class SensorInfo():
@@ -365,7 +365,6 @@ class FAE14SSR(BusObject):
         # 3 = home automatoin
         result.extend( await self.get_registered_sensors(self.sensor_address_range, 4 ))
         return result
-
 
 class DimmerStyle(BusObject):
     """Devices that work just the same as a FUD14. FSG14_1_10V appears to
@@ -596,7 +595,7 @@ class HasProgrammableRPS:
                 expected_line = a + bytes((6, 3, 1 << subchannel, 0))
             else:
                 raise ValueError("Unknown discriminator on address %s" % (source,))
-        elif profile is A5_38_08:
+        elif profile in [A5_38_08, H5_3F_7F]:
             a, discriminator = source
             # 51 GFVS = House Automation SW
             expected_line = a + bytes((0, self.gfvs_code, 1 << subchannel, 0))
@@ -723,7 +722,7 @@ class FSB14(BusObject, HasProgrammableRPS):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.programmable_rps = (17, self.memory_size)
-        self.gfvs_code = 31
+        self.gfvs_code = KeyFunction.OPERATIONS_COMMAND_WITH_TIME_VALUE_TRASMISSION_FROM_CONTROLLER
 
     @classmethod
     def annotate_memory(cls, mem):
