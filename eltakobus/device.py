@@ -798,6 +798,9 @@ class FSB14(BusObject, HasProgrammableRPS):
                 except Exception as e:
                     print("Something went wrong", repr(e), e)
 
+    async def get_all_sensors(self) -> [SensorInfo]:
+        return await self.get_registered_sensors(self.sensor_address_range, 2)
+
 class F3Z14D(BusObject):
     discovery_name = bytes((0x04, 0x67))
     size = 3
@@ -806,6 +809,9 @@ class FMZ14(BusObject):
     discovery_name = bytes((0x04, 0x0e))
     size = 1
     sensor_address_range = range(1, 120)
+
+    async def get_all_sensors(self) -> [SensorInfo]:
+        return await self.get_registered_sensors(self.sensor_address_range, 1)
 
 class FWG14MS(BusObject):
     discovery_name = bytes((0x04, 0x1a))
