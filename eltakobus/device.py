@@ -363,7 +363,7 @@ class FAE14SSR(BusObject):
         result = []
         result.extend( await self.get_registered_sensors(self.thermostat_address_range, 1 ))
         result.extend( await self.get_registered_sensors(self.temp_sensor_range, 2 ))
-        result.extend( await self.get_registered_sensors(self.smart_home_controller_address_range, 2 ))
+        result.extend( await self.get_registered_sensors(self.smart_home_controller_address_range, 3 ))
         result.extend( await self.get_registered_sensors(self.sensor_address_range, 4 ))
         return result
 
