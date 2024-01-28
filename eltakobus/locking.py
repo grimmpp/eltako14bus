@@ -52,7 +52,7 @@ async def lock_bus(bus):
                 await asyncio.sleep(0.2)
                 continue
 
-            if response.is_fam:
+            if response is not None and response.is_fam:
                 return LOCKED
     return PROBABLY_LOCKED
 
@@ -61,14 +61,18 @@ PROBABLY_UNLOCKED = "No response to unlock, assuming that no FAM is present on t
 
 async def unlock_bus(bus):
     
-    try:
+    for i in range(20):
         response = await bus.exchange(EltakoBusUnlock(), EltakoDiscoveryReply) # EltakoMessage)
-        
-        response = EltakoDiscoveryReply.parse(response.serialize())
-    except ParseError:
-        pass
-    else:
-        if response.is_fam:
-            return UNLOCKED
+                
+        if response is not None:
+            try:
+                response = EltakoDiscoveryReply.parse(response.serialize())
+                if response is not None and response.is_fam:
+                    return UNLOCKED
+            except ParseError:
+                pass
+                
+        await asyncio.sleep(.2)
+    
 
     return PROBABLY_UNLOCKED

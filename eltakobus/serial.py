@@ -84,7 +84,10 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
         self.transmit.put((time.time(), request))
 
     def set_callback(self, callback):
-        self.__callback = callback
+        with self.__mutex:
+            self.__callback = callback
+            if callable is not None:
+                while not self.transmit.empty(): self.transmit.get()
 
     def echotest(self):
         echotest = b'\xff\x00\xff' * 5 # long enough that it can not be contained in any EnOcean message
