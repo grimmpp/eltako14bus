@@ -335,10 +335,11 @@ class FAM14(BusObject):
 class FAE14SSR(BusObject):
     size = 2
     discovery_name = bytes((0x04, 0x16))
+    thermostat_address_range = range(8,10)
+    temp_sensor_range = range(10,12)
+    smart_home_controller_address_range = range(12,14)
     sensor_address_range = range(14, 127)
-    thermostat_address_range = range(8,9)
-    temp_sensor_range = range(10,11)
-    smart_home_controller_address_range = range(12,13)
+
 
     @classmethod
     def annotate_memory(cls, mem):
@@ -513,15 +514,24 @@ class FUD14(DimmerStyle):
     size = 1
     discovery_name = bytes((0x04, 0x04))
     has_subchannels = False
-    sensor_address_range = range(12, 127)
+    sensor_address_range = range(8, 127)
+    range_func_group_1 = range(8,9)
+    range_func_group_2 = range(9,12)
+    range_func_group_3 = range(12,127)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.programmable_dimmer = (12, self.memory_size)
         self.gfvs_code = KeyFunction.DIMMING_VALUE_FROM_CONTROLLER
 
+    async def get_all_sensors(self) -> [SensorInfo]:
+        result = []
+        result.extend( await self.get_registered_sensors(self.range_func_group_1, 1 ))
+        result.extend( await self.get_registered_sensors(self.range_func_group_2, 2 ))
+        result.extend( await self.get_registered_sensors(self.range_func_group_3, 3 ))
+        return result
 
-class FUD14_800W(DimmerStyle):
+class FUD14_800W(FUD14):
     size = 1
     discovery_name = bytes((0x04, 0x05))
     has_subchannels = False
@@ -634,7 +644,9 @@ class FSR14(BusObject, HasProgrammableRPS):
         super().__init__(*args, **kwargs)
         self.programmable_rps = (12, self.memory_size)
         self.gfvs_code = KeyFunction.SWITCHING_STATE_FROM_CONTROLLER
-        self.sensor_address_range = range(5, 41)
+        self.sensors_func_group_1 = range(8,12)
+        self.sensors_func_group_2 = range(12,127)
+        self.sensor_address_range = range(8, 127)
 
 
 
@@ -696,7 +708,10 @@ class FSR14(BusObject, HasProgrammableRPS):
         return {subchannel: state}
     
     async def get_all_sensors(self) -> [SensorInfo]:
-        return await self.get_registered_sensors(self.sensor_address_range, 2)
+        result = []
+        result.extend( await self.get_registered_sensors(self.sensors_func_group_1, 1) )
+        result.extend( await self.get_registered_sensors(self.sensors_func_group_2, 2) )
+        return result
 
 class FSR14_1x(FSR14):
     discovery_name = bytes((0x04, 0x01))
@@ -718,6 +733,8 @@ class FSB14(BusObject, HasProgrammableRPS):
     size = 2
     discovery_name = bytes((0x04, 0x06))
     sensor_address_range = range(17, 135)
+    range_func_group_1 = range(16,17)
+    range_func_group_2 = range(17,135)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -799,7 +816,10 @@ class FSB14(BusObject, HasProgrammableRPS):
                     print("Something went wrong", repr(e), e)
 
     async def get_all_sensors(self) -> [SensorInfo]:
-        return await self.get_registered_sensors(self.sensor_address_range, 2)
+        result = []
+        result.extend( await self.get_registered_sensors(self.range_func_group_1, 1) )
+        result.extend( await self.get_registered_sensors(self.range_func_group_2, 2) )
+        return result
 
 class F3Z14D(BusObject):
     discovery_name = bytes((0x04, 0x67))
