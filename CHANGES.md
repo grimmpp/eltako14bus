@@ -2,6 +2,11 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.0.46
+- added auto_reconnect as optional
+- added more configuration possibility to RS485SerialInterfaceV2
+- automatic release pipeline added
+
 ## 0.0.42
 - Stabilized unlock and lock of FAM14
 

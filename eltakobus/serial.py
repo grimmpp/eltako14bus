@@ -29,11 +29,20 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
             return self._receive.get_nowait()
 
 
-    def __init__(self, filename, log=None, callback=None, baud_rate=57600, reconnection_timeout:float=10, delay_message:float=0.01):
+    def __init__(self, 
+                 filename, 
+                 log=None, 
+                 callback=None, 
+                 baud_rate=57600, 
+                 reconnection_timeout:float=10, 
+                 delay_message:float=0.01, 
+                 auto_reconnect=True):
+        
         super(RS485SerialInterfaceV2, self).__init__()
         self._filename = filename
         self._baud_rate = baud_rate
         self.delay_message = delay_message
+        self._auto_reconnect = auto_reconnect
 
         self.log = log or logging.getLogger('eltakobus.serial')
 
@@ -175,8 +184,9 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                 self.is_serial_connected.clear()
                 self.log.error(e)
                 self.__serial = None
-                self.log.info("Serial communication crashed. Wait %s seconds for reconnection.", self.__recon_time)
-                time.sleep(self.__recon_time)
+                if self._auto_reconnect:
+                    self.log.info("Serial communication crashed. Wait %s seconds for reconnection.", self.__recon_time)
+                    time.sleep(self.__recon_time)
 
         self._fire_status_change_handler(connected=False)
         if self.__serial is not None:
@@ -185,7 +195,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
         self.log.info('Serial communication stopped')
 
 
-    async def exchange(self, request: ESP2Message, responsetype=None) -> ESP2Message:
+    async def exchange(self, request: ESP2Message, responsetype=None, retries:int=3, timeout:float=1.0) -> ESP2Message:
         """Send a request and return a response depending on responsetype as
         BusInterface.exchange does.
         """
@@ -194,9 +204,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
         if self.__callback is not None:
             raise RuntimeError("exchange is not reentrant, please serialize your access to the bus yourself.")
 
-        timeout = 1
         send_time = 0
-        retries = 3
         while retries > 0:
 
             with self.__mutex:
