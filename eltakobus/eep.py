@@ -217,9 +217,9 @@ class _LightTemperatureOccupancySensor(EEP):
         data[3] = data[3] | (self.pir_status << 1)
         data[3] = data[3] | (self.learn_button << 3)
         
-        data[2] = int(((self.temperature - cls.temp_min) / (cls.temp_max - cls.temp_min)) * 255.0)
-        data[1] = int(((self.illumination - cls.illu_min) / (cls.illu_max - cls.illu_min)) * 255.0)
-        data[0] = int(((self.supply_voltage - cls.volt_min) / (cls.volt_max - cls.volt_min)) * 255.0)
+        data[2] = int(((self.temperature - self.temp_min) / (self.temp_max - self.temp_min)) * 255.0)
+        data[1] = int(((self.illumination - self.illu_min) / (self.illu_max - self.illu_min)) * 255.0)
+        data[0] = int(((self.supply_voltage - self.volt_min) / (self.volt_max - self.volt_min)) * 255.0)
 
         status = 0x00
         
@@ -235,6 +235,10 @@ class _LightTemperatureOccupancySensor(EEP):
         
     @property
     def temperature(self):
+        return self._temperature
+    
+    @property
+    def current_temperature(self):
         return self._temperature
         
     @property
@@ -1157,6 +1161,7 @@ class _OccupancySensor(EEP):
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
         
+        data[0] = self.support_voltage * 255.0 / 5.0
         data[1] = self._support_voltage / 5.0 * 250.0
         data[2] = self._pir_status
         data[3] = (self.learn_button << 3) | self._support_volrage_availability
@@ -1194,3 +1199,55 @@ class _OccupancySensor(EEP):
 
 class A5_07_01(_OccupancySensor):
     """Occupancy Sensor"""
+
+class _BrightnessTwilightSensor(EEP):
+    # ORG = 0x07
+    # Data_byte3 = Brightness 0..100 lux (0..100)
+    # (only if DB2 = 0x00)
+    # Data_byte2 = Brightness 300..30.000 lux (0..255)
+    # Data_byte1 = -
+    # Data_byte0 = 0x0F
+    # Lerntelegramm: 0x18080D87
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        
+        twilight = msg.data[0]
+        day_light = msg.data[1] / 255.0 * (30000 - 300) + 300
+        illumination = twilight if msg.data[1] == 0 else day_light
+
+        return cls(twilight, day_light, illumination)
+
+    def encode_message(self, address):
+        data = bytearray([0, 0, 0, 0])
+        
+        data[0] = self.twilight
+        data[1] = (self.day_light - 300) / (30000 - 300) * 255
+        data[2] = 0x00
+        data[3] = 0x0F
+
+        status = 0x00
+        
+        return Regular4BSMessage(address, status, data, True)
+    
+    @property
+    def day_light(self):
+        return self._day_light
+    
+    @property
+    def twilight(self):
+        return self._twilight
+    
+    @property
+    def illumination(self):
+        return self._illumination
+
+    def __init__(self, twilight, day_light, illumination):
+        self._twilight = twilight
+        self._day_light = day_light
+        self._illumination = illumination
+
+class A5_06_01(_BrightnessTwilightSensor):
+    """Brightness Twilight Sensor"""
