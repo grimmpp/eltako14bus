@@ -2,6 +2,9 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.0.48
+- Added EEP A5-0-03
+
 ## 0.0.47
 - Made A5-08-01 compatible and fixed but
 
