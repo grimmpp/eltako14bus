@@ -963,6 +963,67 @@ class _TemperatureAndHumiditySensor2(EEP):
 class A5_04_01(_TemperatureAndHumiditySensor2):
     """Temperature and Humidity Sensor"""
 
+
+class _TemperatureAndHumiditySensor3(EEP):
+    temp_min = -20.0
+    temp_max = 60.0
+    usr = 255.0 # unscaled range 
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        
+        learn_button = (msg.data[3] & 0x08) >> 3
+
+        telegram_type = (msg.data[3] & 0x01)
+
+        # 0 .. 100%
+        humidity = (msg.data[0] / cls.usr) * 100.0
+        # -20°C .. +60°C
+        raw_temp = msg.data[1] * 265 + msg.data[2]
+        temperature = ((raw_temp / 1024) * (cls.temp_max - cls.temp_min)) + cls.temp_min
+
+        return cls(temperature,humidity,learn_button, telegram_type)
+
+    def encode_message(self, address):
+        data = bytearray([0, 0, 0, 0])
+        data[0] = 0x00
+        data[1] = int((self.humidity / 100.0) * self.usr)
+        data[2] = int((self.current_temperature / (self.temp_max - self.temp_min)) * self.usr)
+        data[3] = (self.learn_button << 3) + self.telegram_type
+        
+        status = 0x00
+
+        return Regular4BSMessage(address, status, data, True)
+
+    @property
+    def current_temperature(self):
+        return self._temperature
+    
+    @property
+    def humidity(self):
+        return self._humidity
+    
+    @property
+    def learn_button(self):
+        return self.learn_button
+    
+    # 0 = heartbeat, 1 = event triggered
+    @property
+    def telegram_type(self):
+        return self._telegram_type
+    
+    def __init__(self, temperature, humidity,learn_button,telegram_type):
+        self._temperature = temperature
+        self._humidity = humidity
+        self._learn_button = learn_button
+        self._telegram_type = telegram_type
+
+class A5_04_03(_TemperatureAndHumiditySensor3):
+    """Temperature and Humidity Sensor"""
+
+
 # ======================================
 # MARK: - Automated Meter Reading
 # ======================================
