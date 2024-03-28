@@ -774,7 +774,7 @@ class _WeatherStation(EEP):
             data[3] = data[3] | (self.day_night << 2)
             data[3] = data[3] | (self.learn_button << 3)
             data[2] = int((self.wind_speed / 70.0) * 255.0)
-            data[1] = int(((self.temperature - cls.temp_min) / (cls.temp_max - cls.temp_min)) * 255.0)
+            data[1] = int(((self.temperature - self.temp_min) / (self.temp_max - self.temp_min)) * 255.0)
             data[0] = int((self.dawn_sensor / 999.0) * 255.0)
         elif self.identifier == 0x02:
             data[3] = data[3] | self.hemisphere
@@ -895,7 +895,7 @@ class _TemperatureAndHumiditySensor(EEP):
     
     @property
     def learn_button(self):
-        return self.learn_button
+        return self._learn_button
     
     def __init__(self, temperature, humidity,learn_button):
         self._temperature = temperature
@@ -927,7 +927,7 @@ class _TemperatureAndHumiditySensor2(EEP):
         
         return cls(temperature, humidity, learn_button, temp_availability)
 
-    def encode_message(self, address, learn_button,temp_availability):
+    def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
         data[0] = 0x00
         data[1] = int((self.humidity / 100.0) * self.usr)
@@ -952,7 +952,7 @@ class _TemperatureAndHumiditySensor2(EEP):
     
     @property
     def learn_button(self):
-        return self.learn_button
+        return self._learn_button
 
     def __init__(self, temperature, humidity,learn_button, temp_availability):
         self._temperature = temperature
@@ -1007,7 +1007,7 @@ class _TemperatureAndHumiditySensor3(EEP):
     
     @property
     def learn_button(self):
-        return self.learn_button
+        return self._learn_button
     
     # 0 = heartbeat, 1 = event triggered
     @property
@@ -1111,7 +1111,7 @@ class _EltakoShutterStatus(EEP):
             raise WrongOrgError
 
     def encode_message(self, address):
-        if state is not None:
+        if self.state is not None:
             data = bytearray([0])
             data[0] = self.state
             
@@ -1222,8 +1222,8 @@ class _OccupancySensor(EEP):
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
         
-        data[0] = self.support_voltage * 255.0 / 5.0
-        data[1] = self._support_voltage / 5.0 * 250.0
+        data[0] = int( self.support_voltage * 255.0 / 5.0 )
+        data[1] = 0
         data[2] = self._pir_status
         data[3] = (self.learn_button << 3) | self._support_volrage_availability
 
@@ -1285,7 +1285,7 @@ class _BrightnessTwilightSensor(EEP):
         data = bytearray([0, 0, 0, 0])
         
         data[0] = self.twilight
-        data[1] = (self.day_light - 300) / (30000 - 300) * 255
+        data[1] = max(0, min(255, int( (self.day_light - 300) / (30000 - 300) * 255 )))
         data[2] = 0x00
         data[3] = 0x0F
 
