@@ -7,8 +7,8 @@ import yaml
 
 from .util import b2a, b2s, AddressExpression
 from .message import *
-from .error import UnrecognizedUpdate
-from .eep import EEP, A5_38_08, A5_12_01, F6_02_01, F6_02_02, H5_3F_7F
+from .error import *
+from .eep import EEP, A5_38_08, A5_12_01, F6_02_01, F6_02_02, H5_3F_7F, A5_10_06
 
 
 
@@ -266,7 +266,7 @@ class BusObject:
         it."""
         raise UnrecognizedUpdate("Device is not expected to send updates")
 
-    async def get_registered_sensors(self, sensor_range:range, in_func_group:int) -> [SensorInfo]:
+    async def get_registered_sensors(self, sensor_range:range, in_func_group:int) -> list[SensorInfo]:
         result = []
         for i in sensor_range:
             mem_line:bytes = await self.read_mem_line(i)
@@ -299,7 +299,7 @@ class BusObject:
 
         return result
     
-    async def get_all_sensors(self) -> [SensorInfo]:
+    async def get_all_sensors(self) -> list[SensorInfo]:
         return []
         # return await self.get_registered_sensors(self.sensor_address_range)
 
@@ -332,40 +332,7 @@ class FAM14(BusObject):
         mem_line = await self.read_mem_line(1)
         return int.from_bytes(mem_line[0:4], "big") 
 
-class FAE14SSR(BusObject):
-    size = 2
-    discovery_name = bytes((0x04, 0x16))
-    thermostat_address_range = range(8,10)
-    temp_sensor_range = range(10,12)
-    smart_home_controller_address_range = range(12,14)
-    sensor_address_range = range(14, 127)
 
-
-    @classmethod
-    def annotate_memory(cls, mem):
-        return {
-                1: MemoryFileNibbleExplanationComment(
-                    "AD DR ES S, -- -- -- --", "Base address"),
-                4: MemoryFileNibbleExplanationComment(
-                    "-- RV -- -- -- -- -- --",
-                    "RV = return value, 1. bit channel 1 & 2. bit channel 2 "),
-                5: MemoryFileNibbleExplanationComment(
-                    "-- -- -- -- dt dt -- --", "temp offset channel 1 & 2"),
-                7: MemoryFileNibbleExplanationComment(
-                    "a  a  hc tp hc tp  tt tt", ""),
-                8: MemoryFileStartOfSectionComment("function group 1 / Temp Controller"),
-                10: MemoryFileStartOfSectionComment("function group 2 / Temp Sensor"),
-                12: MemoryFileStartOfSectionComment("function group 3 / Smart Home SW"),
-                14: MemoryFileStartOfSectionComment("function group 3 / switches, contacts, ..."),
-                }
-    
-    async def get_all_sensors(self) -> [SensorInfo]:
-        result = []
-        result.extend( await self.get_registered_sensors(self.thermostat_address_range, 1 ))
-        result.extend( await self.get_registered_sensors(self.temp_sensor_range, 2 ))
-        result.extend( await self.get_registered_sensors(self.smart_home_controller_address_range, 3 ))
-        result.extend( await self.get_registered_sensors(self.sensor_address_range, 4 ))
-        return result
 
 class DimmerStyle(BusObject):
     """Devices that work just the same as a FUD14. FSG14_1_10V appears to
@@ -401,7 +368,7 @@ class DimmerStyle(BusObject):
             await self.ensure_programmed(subchannel, source_address, A5_38_08)
             self._explicitly_configured_command_address[subchannel] = source_address
 
-    async def ensure_programmed(self, subchannel, source: AddressExpression, profile: EEP):
+    async def ensure_programmed(self, subchannel, source: AddressExpression, profile: EEP) -> bool:
         if not self.has_subchannels:
             # In a FUD14 and similar, the subchannel field is a ramp speed (and
             # 0 seems not to mean "instant")
@@ -430,13 +397,14 @@ class DimmerStyle(BusObject):
             line = await self.read_mem_line(memory_id)
             if line == expected_line:
                 self.bus.log.debug("%s: Found programming for profile %s in line %d", self, profile, memory_id)
-                return
+                return False
             if not any(line) and first_empty is None:
                 first_empty = memory_id
         if first_empty is None:
             raise RuntimeError("No free memory to configure this function")
         self.bus.log.info("%s: Writing programming for profile %s in line %d", self, profile, first_empty)
         await self.write_mem_line(first_empty, expected_line)
+        return True
 
     async def set_state(self, channel, dim, total_ramp_time=0):
         """Send a telegram to set the dimming state to dim (from 0 to 255). Total ramp time is the the time in seconds """
@@ -524,7 +492,7 @@ class FUD14(DimmerStyle):
         self.programmable_dimmer = (12, self.memory_size)
         self.gfvs_code = KeyFunction.DIMMING_VALUE_FROM_CONTROLLER
 
-    async def get_all_sensors(self) -> [SensorInfo]:
+    async def get_all_sensors(self) -> list[SensorInfo]:
         result = []
         result.extend( await self.get_registered_sensors(self.range_func_group_1, 1 ))
         result.extend( await self.get_registered_sensors(self.range_func_group_2, 2 ))
@@ -594,8 +562,14 @@ class HasProgrammableRPS:
             await self.ensure_programmed(subchannel, source_address, F6_02_01)
             self._explicitly_configured_command_address[subchannel] = source_address
 
-    async def ensure_programmed(self, subchannel, source: AddressExpression, profile: EEP):
-        if profile is F6_02_01:
+    async def ensure_programmed(self, subchannel, source: AddressExpression, profile: EEP) -> bool:
+        """
+        Checks if entry is already present and if not it writes it into the memory at a free place.
+
+        :returns: True if entry was written, False if enrity already exists
+        """
+        memory_range = self.programmable_rps
+        if profile in [F6_02_01, F6_02_02]:
             a, discriminator = source
             if discriminator == "left":
                 # programmed as function 3, key is 5 for left
@@ -609,21 +583,30 @@ class HasProgrammableRPS:
             a, discriminator = source
             # 51 GFVS = House Automation SW
             expected_line = a + bytes((0, self.gfvs_code, 1 << subchannel, 0))
+        elif profile in [A5_10_06]:
+            a, discriminator = source
+            # 65 GFVS = House Automation SW
+            expected_line = a + bytes((0, self.gfvs_code, 1 << subchannel, 0))
+            memory_range = (self.programmable_rps[0]+subchannel, self.programmable_rps[0]+subchannel)
         else:
             raise ValueError("It is unknown how this profile could be programmed in.")
 
         first_empty = None
-        for memory_id in range(*self.programmable_rps):
-            line = await self.read_mem_line(memory_id)
-            if line == expected_line:
-                self.bus.log.debug("%s: Found programming for subchannel %s and profile %s in line %d", self, subchannel, profile, memory_id)
-                return
-            if not any(line) and first_empty is None:
-                first_empty = memory_id
+        if memory_range[0] == memory_range[1]:
+            first_empty = memory_range[0] # force
+        else:
+            for memory_id in range(*memory_range):
+                line = await self.read_mem_line(memory_id)
+                if line == expected_line:
+                    self.bus.log.debug("%s: Found programming for subchannel %s and profile %s in line %d", self, subchannel, profile, memory_id)
+                    return False
+                if not any(line) and first_empty is None:
+                    first_empty = memory_id
         if first_empty is None:
             raise RuntimeError("No free memory to configure this function")
         self.bus.log.info("%s: Writing programming for profile %s in line %d", self, profile, first_empty)
         await self.write_mem_line(first_empty, expected_line)
+        return True
 
     async def set_state(self, channel, state: bool):
         command = await self.find_direct_command_address(channel)
@@ -707,7 +690,7 @@ class FSR14(BusObject, HasProgrammableRPS):
 
         return {subchannel: state}
     
-    async def get_all_sensors(self) -> [SensorInfo]:
+    async def get_all_sensors(self) -> list[SensorInfo]:
         result = []
         result.extend( await self.get_registered_sensors(self.sensors_func_group_1, 1) )
         result.extend( await self.get_registered_sensors(self.sensors_func_group_2, 2) )
@@ -815,7 +798,7 @@ class FSB14(BusObject, HasProgrammableRPS):
                 except Exception as e:
                     print("Something went wrong", repr(e), e)
 
-    async def get_all_sensors(self) -> [SensorInfo]:
+    async def get_all_sensors(self) -> list[SensorInfo]:
         result = []
         result.extend( await self.get_registered_sensors(self.range_func_group_1, 1) )
         result.extend( await self.get_registered_sensors(self.range_func_group_2, 2) )
@@ -825,12 +808,17 @@ class F3Z14D(BusObject):
     discovery_name = bytes((0x04, 0x67))
     size = 3
 
-class FMZ14(BusObject):
+class FMZ14(BusObject, HasProgrammableRPS):
     discovery_name = bytes((0x04, 0x0e))
     size = 1
-    sensor_address_range = range(1, 120)
+    sensor_address_range = range(8, 8+47)
 
-    async def get_all_sensors(self) -> [SensorInfo]:
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.programmable_rps = (8, self.memory_size)
+        self.gfvs_code = KeyFunction.SWITCHING_STATE_FROM_CONTROLLER
+
+    async def get_all_sensors(self) -> list[SensorInfo]:
         return await self.get_registered_sensors(self.sensor_address_range, 1)
 
 class FWG14MS(BusObject):
@@ -936,6 +924,48 @@ class FDG14(DimmerStyle):
                          "key (5 = left, 6 = right), function (eg. 32 = A5-38-08), ch = channel"),
                     ],
                 }
+    
+
+class FAE14SSR(BusObject, HasProgrammableRPS):
+    size = 2
+    discovery_name = bytes((0x04, 0x16))
+    thermostat_address_range = range(8,10)
+    temp_sensor_range = range(10,12)
+    smart_home_controller_address_range = range(12,14)
+    sensor_address_range = range(14, 127)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.programmable_rps = self.smart_home_controller_address_range
+        self.gfvs_code = KeyFunction.TEMPERATURE_CONTROLLER_SETPOINT
+
+    @classmethod
+    def annotate_memory(cls, mem):
+        return {
+                1: MemoryFileNibbleExplanationComment(
+                    "AD DR ES S, -- -- -- --", "Base address"),
+                4: MemoryFileNibbleExplanationComment(
+                    "-- RV -- -- -- -- -- --",
+                    "RV = return value, 1. bit channel 1 & 2. bit channel 2 "),
+                5: MemoryFileNibbleExplanationComment(
+                    "-- -- -- -- dt dt -- --", "temp offset channel 1 & 2"),
+                7: MemoryFileNibbleExplanationComment(
+                    "a  a  hc tp hc tp  tt tt", ""),
+                8: MemoryFileStartOfSectionComment("function group 1 / Temp Controller"),
+                10: MemoryFileStartOfSectionComment("function group 2 / Temp Sensor"),
+                12: MemoryFileStartOfSectionComment("function group 3 / Smart Home SW"),
+                14: MemoryFileStartOfSectionComment("function group 3 / switches, contacts, ..."),
+                }
+    
+    async def get_all_sensors(self) -> list[SensorInfo]:
+        result = []
+        result.extend( await self.get_registered_sensors(self.thermostat_address_range, 1 ))
+        result.extend( await self.get_registered_sensors(self.temp_sensor_range, 2 ))
+        result.extend( await self.get_registered_sensors(self.smart_home_controller_address_range, 3 ))
+        result.extend( await self.get_registered_sensors(self.sensor_address_range, 4 ))
+        return result
+
+
 
 known_objects = [FAM14, FUD14, FUD14_800W, FSB14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A, FSG14_1_10V, FGW14_USB, FDG14, FAE14SSR]
 # sorted so the first match of (discovery name is a prefix, size matches) can be used
@@ -952,6 +982,7 @@ async def create_busobject(bus, id):
     else:
         return BusObject(response, bus=bus)
 
+    
 
 class MemoryFile(defaultdict):
     """In-memory representation of a YAML file suitable for storing, editing,
