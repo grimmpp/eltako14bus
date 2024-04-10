@@ -1312,3 +1312,129 @@ class _BrightnessTwilightSensor(EEP):
 
 class A5_06_01(_BrightnessTwilightSensor):
     """Brightness Twilight Sensor"""
+
+class _DigitalInputAndBattery(EEP):
+    """Digital Input regarding A5-30-01"""
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        
+        battery_status = msg.data[1]
+        contact_status = msg.data[2]
+        learn_button = (msg.data[3] & 0x08) >> 3
+
+        return cls(battery_status, contact_status, learn_button)
+
+    def encode_message(self, address):
+        data = bytearray([0, 0, 0, 0])
+        
+        data[0] = 0
+        data[1] = self.battery_status
+        data[2] = self.contact_status
+        data[3] = self.learn_button
+
+        status = 0x00
+        
+        return Regular4BSMessage(address, status, data, True)
+    
+    @property
+    def low_battery(self):
+        return self._low_battery
+
+    @property
+    def contact_closed(self):
+        return self._contact_closed
+
+    @property
+    def battery_status(self):
+        return self._battery_status
+    
+    @property
+    def contact_status(self):
+        return self._contact_status
+    
+    @property
+    def learn_button(self):
+        return self._learn_button
+
+    def __init__(self, battery_status, contact_status, learn_button):
+        self._battery_status = battery_status
+        self._contact_status = contact_status
+        self._low_battery = self._battery_status < 121
+        self._contact_closed = self._contact_status < 196
+        self._learn_button = learn_button
+
+class A5_30_01(_DigitalInputAndBattery):
+    """Digital Input with battery status"""
+
+class _DigitalInputsAndTemperature(EEP):
+    """4 Digital Inputs and Temperature"""
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        
+        temperature = msg.data[1] / 255 * 40
+        
+        digital_input_0 = msg.data[2] & 0x01
+        digital_input_1 = (msg.data[2] & 0x02) >> 1
+        digital_input_2 = (msg.data[2] & 0x04) >> 2
+        digital_input_3 = (msg.data[2] & 0x08) >> 3
+        status_of_wake = (msg.data[2] & 0x10) >> 4
+
+        learn_button = (msg.data[3] & 0x08) >> 3
+
+        return cls(temperature, digital_input_0, digital_input_1, digital_input_2, digital_input_3, status_of_wake, learn_button)
+    
+
+    def encode_message(self, address):
+        data = bytearray([0, 0, 0, 0])
+        
+        data[1] = self._temperature / 40 * 255
+
+        data[2] += self.digital_input_0
+        data[2] += self.digital_input_1 << 1
+        data[2] += self.digital_input_2 << 2
+        data[2] += self.digital_input_3 << 3
+        data[2] += self.status_of_wake << 4
+
+        data[3] = self.learn_button
+
+        status = 0x00
+        
+        return Regular4BSMessage(address, status, data, True)
+    
+    @property
+    def digital_input_0(self):
+        return self._digital_input_0
+    
+    @property
+    def digital_input_1(self):
+        return self._digital_input_1
+    
+    @property
+    def digital_input_2(self):
+        return self._digital_input_2
+    
+    @property
+    def digital_input_3(self):
+        return self._digital_input_3
+    
+    @property
+    def status_of_wake(self):
+        return self._status_of_wake
+
+    def __init__(self, temperature, digital_input_0, digital_input_1, digital_input_2, digital_input_3, status_of_wake, learn_button):
+        self._temperature = temperature
+        self._digital_input_0 = digital_input_0
+        self._digital_input_1 = digital_input_1
+        self._digital_input_2 = digital_input_2
+        self._digital_input_3 = digital_input_3
+        self._status_of_wake = status_of_wake
+        self._learn_button = learn_button
+
+class A5_30_03(_DigitalInputsAndTemperature):
+    """Digital Inputs"""
