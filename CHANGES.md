@@ -2,6 +2,9 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.0.51
+- Added EEP A5-30-01 and A5-30-03 for Digital Inputs
+
 ## 0.0.50
 - Improved device programmability and added FAE14SSR and FMZ14
 
