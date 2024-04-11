@@ -1,0 +1,8 @@
+serial
+asyncio
+pyserial_asyncio
+pyserial
+aiocoap
+pyyaml
+pyxdg
+pytest

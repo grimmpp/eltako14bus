@@ -2,6 +2,10 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.0.52 Unit Tests introduced
+- Added initial unit test 
+- Added test executing as part of release process
+
 ## 0.0.51
 - Added EEP A5-30-01 and A5-30-03 for Digital Inputs
 
