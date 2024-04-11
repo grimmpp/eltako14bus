@@ -1393,7 +1393,7 @@ class _DigitalInputsAndTemperature(EEP):
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
         
-        data[1] = self._temperature / 40 * 255
+        data[1] = int(self._temperature / 40 * 255)
 
         data[2] += self.digital_input_0
         data[2] += self.digital_input_1 << 1
@@ -1426,6 +1426,10 @@ class _DigitalInputsAndTemperature(EEP):
     @property
     def status_of_wake(self):
         return self._status_of_wake
+    
+    @property
+    def learn_button(self):
+        return self._learn_button
 
     def __init__(self, temperature, digital_input_0, digital_input_1, digital_input_2, digital_input_3, status_of_wake, learn_button):
         self._temperature = temperature
