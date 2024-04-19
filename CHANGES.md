@@ -2,6 +2,9 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.0.53 Detection for FDG14 added
+- Improvements to detect devices and added detection for FDG14 (DALI)
+
 ## 0.0.52 Unit Tests introduced
 - Added initial unit test 
 - Added test executing as part of release process

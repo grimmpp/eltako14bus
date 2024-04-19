@@ -29,7 +29,7 @@
             "type": "python",
             "request": "launch",
             "program": "eltakotool.py",
-            "args": ["--eltakobus", "COM10", "--log_level", "debug", "dump", "device-mem-dump.txt"], // for FAM14
+            "args": ["--eltakobus", "COM13", "--log_level", "debug", "dump", "device-mem-dump_2.txt"], // for FAM14
             "console": "integratedTerminal",
             "justMyCode": true
         },
