@@ -920,8 +920,8 @@ class FDG14(DimmerStyle):
                 14: [
                     MemoryFileStartOfSectionComment("function group 1"),
                     MemoryFileNibbleExplanationComment(
-                         "AD DR ES S, KY FN CH ??",
-                         "key (5 = left, 6 = right), function (eg. 32 = A5-38-08), ch = channel"),
+                         "AD DR ES S, KY FN CH V ",
+                         "key (5 = left, 6 = right), function (eg. 32 = A5-38-08), ch = channel (0x10 = broadcast), v = value (e.g. dimming in percentage, brightness)"),
                     ],
                 }
     

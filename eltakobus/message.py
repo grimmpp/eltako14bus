@@ -431,7 +431,7 @@ class EltakoDiscoveryReply(EltakoMessage):
 
         if double_size:
             reported_size *= 2
-            if model != bytes((0x04, 0x34, 0x41, 0x00)):
+            if model != bytes((0x04, 0x34, 0x41, 0x00)) and model != bytes((0x04, 0x34, 0x51, 0x00)):
                 raise ParseError("Odd 0e byte (where 00 or 08 would be consistent with the rest of the ecosystem) found on something else than a FDG14, please verify whether 0e actually means 'this device is actually twice as large on the bus as it annouces'.")
 
         return EltakoDiscoveryReply(reported_address, reported_size, memory_size, model, is_fam)

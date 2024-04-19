@@ -23,9 +23,14 @@ async def enumerate_bus(bus, *, limit_ids=None):
     if limit_ids is None:
         limit_ids = range(1, 256)
 
+    skip_until = 0
+
     for i in limit_ids:
         try:
-            yield await create_busobject(bus, i)
+            if i > skip_until:
+                bus_object = await create_busobject(bus, i)
+                skip_until = i + bus_object.size -1
+                yield bus_object
         except TimeoutError:
             continue
 
@@ -196,6 +201,8 @@ async def dump(bus, outfile):
             await memfile.add_device(dev)
         except TimeoutError:
             print("Read error, skipping: Device %s announces %d memory but produces timeouts at reading" % (dev, dev.discovery_response.memory_size))
+        except Exception:
+            pass
 
     with outfile.open('w') as f:
         memfile.store(f)
