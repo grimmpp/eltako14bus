@@ -2,6 +2,9 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.0.55 Added device FTD14
+- Added device Telegram Duplicator (FTD14) which is a bus gateway
+
 ## 0.0.54 Added device FHK14 and F4HK14
 - Added device FHK14 and F4HK14
 - Changed slightly discovery mechanism of devices. (More than one type id can be added to identify device type)
