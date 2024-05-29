@@ -198,6 +198,7 @@ class SensorInfo():
 
 class BusObject:
     sensor_address_range = None
+    discovery_names = []
 
     def __init__(self, response: EltakoDiscoveryReply, *, bus=None):
         super().__init__()
@@ -306,7 +307,7 @@ class BusObject:
 
 class FAM14(BusObject):
     size = 1
-    discovery_name = bytes((0x07, 0xff))
+    discovery_names = [ bytes((0x07, 0xff)), bytes((0x08, 0xff)) ]
     sensor_address_range = range(0,0)
 
     @classmethod
@@ -331,7 +332,6 @@ class FAM14(BusObject):
         """Gets base id from FAM14 memory."""
         mem_line = await self.read_mem_line(1)
         return int.from_bytes(mem_line[0:4], "big") 
-
 
 
 class DimmerStyle(BusObject):
@@ -480,7 +480,7 @@ class DimmerStyle(BusObject):
 
 class FUD14(DimmerStyle):
     size = 1
-    discovery_name = bytes((0x04, 0x04))
+    discovery_names = [ bytes((0x04, 0x04)) ]
     has_subchannels = False
     sensor_address_range = range(8, 127)
     range_func_group_1 = range(8,9)
@@ -501,7 +501,7 @@ class FUD14(DimmerStyle):
 
 class FUD14_800W(FUD14):
     size = 1
-    discovery_name = bytes((0x04, 0x05))
+    discovery_names = [ bytes((0x04, 0x05)) ]
     has_subchannels = False
 
     def __init__(self, *args, **kwargs):
@@ -697,24 +697,24 @@ class FSR14(BusObject, HasProgrammableRPS):
         return result
 
 class FSR14_1x(FSR14):
-    discovery_name = bytes((0x04, 0x01))
+    discovery_names = [ bytes((0x04, 0x01)) ]
     size = 1
 
 class FSR14_2x(FSR14):
-    discovery_name = bytes((0x04, 0x02))
+    discovery_names = [ bytes((0x04, 0x02)) ]
     size = 2
 
 class FSR14_4x(FSR14):
-    discovery_name = bytes((0x04, 0x01))
+    discovery_names = [ bytes((0x04, 0x01)) ]
     size = 4
 
 class F4SR14_LED(FSR14):
-    discovery_name = bytes((0x04, 0x09))
+    discovery_names = [ bytes((0x04, 0x09)) ]
     size = 4
 
 class FSB14(BusObject, HasProgrammableRPS):
     size = 2
-    discovery_name = bytes((0x04, 0x06))
+    discovery_names = [ bytes((0x04, 0x06)) ]
     sensor_address_range = range(17, 127)
     range_func_group_1 = range(16,17)
     range_func_group_2 = range(17,127)
@@ -805,11 +805,11 @@ class FSB14(BusObject, HasProgrammableRPS):
         return result
 
 class F3Z14D(BusObject):
-    discovery_name = bytes((0x04, 0x67))
+    discovery_names = [ bytes((0x04, 0x67)) ]
     size = 3
 
 class FMZ14(BusObject, HasProgrammableRPS):
-    discovery_name = bytes((0x04, 0x0e))
+    discovery_names = [ bytes((0x04, 0x0e)) ]
     size = 1
     sensor_address_range = range(8, 8+47)
 
@@ -822,11 +822,11 @@ class FMZ14(BusObject, HasProgrammableRPS):
         return await self.get_registered_sensors(self.sensor_address_range, 1)
 
 class FWG14MS(BusObject):
-    discovery_name = bytes((0x04, 0x1a))
+    discovery_names = [ bytes((0x04, 0x1a)) ]
     size = 1
 
 class FSU14(BusObject):
-    discovery_name = bytes((0x07, 0x14))
+    discovery_names = [ bytes((0x07, 0x14)) ]
     size = 8
     async def show_off(self):
         await super().show_off()
@@ -839,11 +839,11 @@ class FSU14(BusObject):
         await asyncio.sleep(3)
 
 class FMSR14(BusObject):
-    discovery_name = bytes((0x05, 0x15))
+    discovery_names = [ bytes((0x05, 0x15)) ]
     size = 5
 
 class FWZ14_65A(BusObject):
-    discovery_name = bytes((0x04, 0x66))
+    discovery_names = [ bytes((0x04, 0x66)) ]
     size = 1
 
     @classmethod
@@ -874,7 +874,7 @@ class FWZ14_65A(BusObject):
         return A5_12_01.decode(msg.data)
 
 class FSG14_1_10V(DimmerStyle):
-    discovery_name = bytes((0x04, 0x07))
+    discovery_names = [ bytes((0x04, 0x07)) ]
     size = 1
     has_subchannels = False
 
@@ -884,11 +884,11 @@ class FSG14_1_10V(DimmerStyle):
         self.gfvs_code = 32
 
 class FGW14_USB(BusObject):
-    discovery_name = bytes((0x04, 0xfe))
+    discovery_names = [ bytes((0x04, 0xfe)) ]
     size = 1
 
 class FDG14(DimmerStyle):
-    discovery_name = bytes((0x04, 0x34))
+    discovery_names = [ bytes((0x04, 0x34)) ]
     size = 16
     has_subchannels = True
 
@@ -925,10 +925,9 @@ class FDG14(DimmerStyle):
                     ],
                 }
     
-
 class FAE14SSR(BusObject, HasProgrammableRPS):
     size = 2
-    discovery_name = bytes((0x04, 0x16))
+    discovery_names = [ bytes((0x04, 0x16)) ]
     thermostat_address_range = range(8,10)
     temp_sensor_range = range(10,12)
     smart_home_controller_address_range = range(12,14)
@@ -951,10 +950,10 @@ class FAE14SSR(BusObject, HasProgrammableRPS):
                     "-- -- -- -- dt dt -- --", "temp offset channel 1 & 2"),
                 7: MemoryFileNibbleExplanationComment(
                     "a  a  hc tp hc tp  tt tt", ""),
-                8: MemoryFileStartOfSectionComment("function group 1 / Temp Controller"),
-                10: MemoryFileStartOfSectionComment("function group 2 / Temp Sensor"),
-                12: MemoryFileStartOfSectionComment("function group 3 / Smart Home SW"),
-                14: MemoryFileStartOfSectionComment("function group 3 / switches, contacts, ..."),
+                cls.thermostat_address_range[0]: MemoryFileStartOfSectionComment("function group 1 / Temp Controller"),
+                cls.temp_sensor_range[0]: MemoryFileStartOfSectionComment("function group 2 / Temp Sensor"),
+                cls.smart_home_controller_address_range[0]: MemoryFileStartOfSectionComment("function group 3 / Smart Home SW"),
+                cls.sensor_address_range[0]: MemoryFileStartOfSectionComment("function group 3 / switches, contacts, ..."),
                 }
     
     async def get_all_sensors(self) -> list[SensorInfo]:
@@ -965,11 +964,27 @@ class FAE14SSR(BusObject, HasProgrammableRPS):
         result.extend( await self.get_registered_sensors(self.sensor_address_range, 4 ))
         return result
 
+class FHK14(FAE14SSR):
+    size=2
+    discovery_names = [ bytes((0x04, 0x18)) ]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-known_objects = [FAM14, FUD14, FUD14_800W, FSB14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A, FSG14_1_10V, FGW14_USB, FDG14, FAE14SSR]
+class F4HK14(FHK14, HasProgrammableRPS):
+    size = 4
+    discovery_names = [ bytes((0x04, 0x18)) ]
+    thermostat_address_range = range(8,12)
+    temp_sensor_range = range(12,16)
+    smart_home_controller_address_range = range(16,20)
+    sensor_address_range = range(20, 127)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+known_objects = [FAM14, FUD14, FUD14_800W, FSB14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A, FSG14_1_10V, FGW14_USB, FDG14, FHK14, F4HK14, FAE14SSR]
 # sorted so the first match of (discovery name is a prefix, size matches) can be used
-sorted_known_objects = sorted(known_objects, key=lambda o: len(o.discovery_name) + 0.5 * (o.size is not None), reverse=True)
+sorted_known_objects = sorted(known_objects, key=lambda o: len(o.discovery_names[0]) + 0.5 * (o.size is not None), reverse=True)
 
 async def create_busobject(bus, id):
     response = await bus.exchange(EltakoDiscoveryRequest(address=id), EltakoDiscoveryReply)
@@ -977,7 +992,7 @@ async def create_busobject(bus, id):
     assert id == response.reported_address, "Queried for ID %s, received %s" % (id, prettify(response))
 
     for o in sorted_known_objects:
-        if response.model.startswith(o.discovery_name) and (o.size is None or o.size == response.reported_size):
+        if response.model[0:2] in o.discovery_names and (o.size is None or o.size == response.reported_size):
             return o(response, bus=bus)
     else:
         return BusObject(response, bus=bus)
