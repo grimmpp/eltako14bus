@@ -2,6 +2,9 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.0.56 Added Sensor support for FTD14
+- Sensors/Memory list of FTD14 can be read out
+
 ## 0.0.55 Added device FTD14
 - Added device Telegram Duplicator (FTD14) which is a bus gateway
 
