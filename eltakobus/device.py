@@ -279,24 +279,38 @@ class BusObject:
             address_off_set = 0
 
             if int.from_bytes(s_adr, "big") > 0:
-                while ch > 0:
-                    if ch & 0x1 == 1:
-                        dev_adr:int = self.address + address_off_set
+                if ch == 0:
+                    result.append(
+                        SensorInfo(
+                            dev_type = self.__class__.__name__,
+                            sensor_id = s_adr,
+                            dev_adr = self.address.to_bytes(4, byteorder = 'big'),
+                            key = key,
+                            dev_id = int(self.address),
+                            key_func = func,
+                            channel = ch,
+                            in_func_group=in_func_group,
+                            memory_line=i
+                            ))
+                else:
+                    while ch > 0:
+                        if ch & 0x1 == 1:
+                            dev_adr:int = self.address + address_off_set
 
-                        result.append(
-                            SensorInfo(
-                                dev_type = self.__class__.__name__,
-                                sensor_id = s_adr,
-                                dev_adr = dev_adr.to_bytes(4, byteorder = 'big'),
-                                key = key,
-                                dev_id = int(self.address),
-                                key_func = func,
-                                channel = address_off_set+1,
-                                in_func_group=in_func_group,
-                                memory_line=i
-                                ))
-                    ch = ch >> 1
-                    address_off_set += 1
+                            result.append(
+                                SensorInfo(
+                                    dev_type = self.__class__.__name__,
+                                    sensor_id = s_adr,
+                                    dev_adr = dev_adr.to_bytes(4, byteorder = 'big'),
+                                    key = key,
+                                    dev_id = int(self.address),
+                                    key_func = func,
+                                    channel = address_off_set+1,
+                                    in_func_group=in_func_group,
+                                    memory_line=i
+                                    ))
+                        ch = ch >> 1
+                        address_off_set += 1
 
         return result
     
@@ -986,6 +1000,7 @@ class F4HK14(FHK14, HasProgrammableRPS):
 class FTD14(BusObject):
     size=1
     discovery_names = [ bytes((0x04, 0xa0)) ]
+    sensor_address_range = range(8, 127)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1005,7 +1020,10 @@ class FTD14(BusObject):
         mem_line = await self.read_mem_line(1)
         return int.from_bytes(mem_line[0:4], "big") 
     
-
+    async def get_all_sensors(self) -> list[SensorInfo]:
+        result = []
+        result.extend( await self.get_registered_sensors(self.sensor_address_range, 1) )
+        return result
 
 
 
