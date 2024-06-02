@@ -314,6 +314,42 @@ class BusObject:
 
         return result
     
+    async def get_registered_dali_devices(self, sensor_range:range, in_func_group:int) -> list[SensorInfo]:
+        result = []
+        for i in sensor_range:
+            mem_line:bytes = await self.read_mem_line(i)
+            s_adr:bytes = mem_line[0:4]
+            key = int(mem_line[4])
+            func = int(mem_line[5])
+            ch = int(mem_line[6])   # dali group address
+            if ch < 15: 
+                # translate into channels (channels: 1-16, dali groups: 0-15 + 16 = broadcast
+                ch_start = ch + 1
+                ch_end = ch + 2
+            else:
+                ch_start = 1
+                ch_end = 17
+
+            if int.from_bytes(s_adr, "big") > 0:
+
+                for ch_i in range(ch_start, ch_end):
+                    dev_adr:int = self.address + ch_i -1
+
+                    result.append(
+                        SensorInfo(
+                            dev_type = self.__class__.__name__,
+                            sensor_id = s_adr,
+                            dev_adr = dev_adr.to_bytes(4, byteorder = 'big'),
+                            key = key,
+                            dev_id = int(self.address),
+                            key_func = func,
+                            channel = ch_i,
+                            in_func_group=in_func_group,
+                            memory_line=i
+                            ))
+
+        return result
+    
     async def get_all_sensors(self) -> list[SensorInfo]:
         return []
         # return await self.get_registered_sensors(self.sensor_address_range)
@@ -905,11 +941,19 @@ class FDG14(DimmerStyle):
     discovery_names = [ bytes((0x04, 0x34)) ]
     size = 16
     has_subchannels = True
+    dim_mask_scene_1_range = range(2,4)
+    dim_mask_scene_2_range = range(4,6)
+    dim_mask_scene_3_range = range(6,8)
+    dim_mask_scene_4_range = range(8,10)
+    sensor_address_range = range(14, 127)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.programmable_dimmer = (14, self.memory_size)
         self.gfvs_code = 32
+
+    async def get_all_sensors(self) -> list[SensorInfo]:
+        return await self.get_registered_dali_devices(self.sensor_address_range, 1)
 
     # Known oddities: Announces with 0e byte at payload[3] of the
     # EltakoDiscoveryReply.
@@ -934,10 +978,18 @@ class FDG14(DimmerStyle):
                 14: [
                     MemoryFileStartOfSectionComment("function group 1"),
                     MemoryFileNibbleExplanationComment(
-                         "AD DR ES S, KY FN CH V ",
-                         "key (5 = left, 6 = right), function (eg. 32 = A5-38-08), ch = channel (0x10 = broadcast), v = value (e.g. dimming in percentage, brightness)"),
+                         "AD DR ES S, KY FN DG V ",
+                         "key (5 = left, 6 = right), function (eg. 32 = A5-38-08), DG = Dali Group (0x10 = broadcast), v = value (e.g. dimming in percentage, brightness)"),
                     ],
                 }
+
+
+class FD2G14(FDG14):
+    discovery_names = [ bytes((0x04, 0x82)) ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
     
 class FAE14SSR(BusObject, HasProgrammableRPS):
     size = 2
@@ -1027,13 +1079,16 @@ class FTD14(BusObject):
 
 
 
-known_objects = [FAM14, FUD14, FUD14_800W, FSB14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A, FSG14_1_10V, FGW14_USB, FDG14, FHK14, F4HK14, FAE14SSR, FTD14]
+known_objects = [FAM14, FUD14, FUD14_800W, FSB14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A, FSG14_1_10V, FGW14_USB, FDG14, FD2G14, FHK14, F4HK14, FAE14SSR, FTD14]
 # sorted so the first match of (discovery name is a prefix, size matches) can be used
 sorted_known_objects = sorted(known_objects, key=lambda o: len(o.discovery_names[0]) + 0.5 * (o.size is not None), reverse=True)
 
 async def create_busobject(bus, id):
-    response = await bus.exchange(EltakoDiscoveryRequest(address=id), EltakoDiscoveryReply)
+    response = await bus.exchange(EltakoDiscoveryRequest(address=id), EltakoDiscoveryReply, retries=5)
 
+    if response == None:
+        return
+    
     assert id == response.reported_address, "Queried for ID %s, received %s" % (id, prettify(response))
 
     for o in sorted_known_objects:

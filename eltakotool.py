@@ -29,8 +29,9 @@ async def enumerate_bus(bus, *, limit_ids=None):
         try:
             if i > skip_until:
                 bus_object = await create_busobject(bus, i)
-                skip_until = i + bus_object.size -1
-                yield bus_object
+                if bus_object != None:
+                    skip_until = i + bus_object.size -1
+                    yield bus_object
         except TimeoutError:
             continue
 
