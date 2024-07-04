@@ -1159,18 +1159,28 @@ class _EltakoShutterCommand(EEP):
         if msg.org != 0x07:
             raise WrongOrgError
         
-        time = msg.data[1]
         command = msg.data[2]
         learn_button = (msg.data[3] & 0x08) >> 3
+        time_in_milli_sec = bool(msg.data[3] & 0x01)
 
-        return cls(time, command, learn_button)
+        if time_in_milli_sec:
+            time = (msg.data[1] + msg.data[0] >> 8) / 10
+        else:
+            time = msg.data[1]
+
+        return cls(time, command, learn_button, time_in_milli_sec)
 
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
         
-        data[1] = self.time
+        if self._time_in_milli_sec:
+            time = int(10 * self.time)
+            data[0] = time % 255
+            data[1] = int(time / 255)
+        else:
+            data[1] = self.time
         data[2] = self.command
-        data[3] = data[3] | (self.learn_button << 3)
+        data[3] = data[3] | (self.learn_button << 3) | (int(self._time_in_milli_sec) << 1)
 
         status = 0x00
         
@@ -1187,11 +1197,16 @@ class _EltakoShutterCommand(EEP):
     @property
     def learn_button(self):
         return self._learn_button
+    
+    @property
+    def time_in_milli_sec(self):
+        return self._time_in_milli_sec
 
-    def __init__(self, time, command, learn_button):
+    def __init__(self, time, command, learn_button, time_in_milli_sec:bool=False):
         self._time = time
         self._command = command
         self._learn_button = learn_button
+        self._time_in_milli_sec = time_in_milli_sec
 
 class H5_3F_7F(_EltakoShutterCommand):
     """Eltako Shutter Command"""
