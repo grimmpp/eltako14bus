@@ -128,7 +128,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                     # reconnect
                     if self.__serial is None:
                         self.__serial = serial.serial_for_url(self._filename, self._baud_rate, timeout=0.1, write_timeout=0.1)
-                        self.log.info("Established serial connection to %s - baudrate: %d", self._filename, self._baud_rate)
+                        self.log.info("Established serial connection to %s - baud rate: %d", self._filename, self._baud_rate)
                         
                         self.log.debug("Performing echo detection")
                         self.suppress_echo = self.echotest()
@@ -150,7 +150,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                             self.__serial.write(ser_msg[1].serialize())
                             self.log.debug("Sent message: %s", ser_msg[1])
                             # baud speed on the bus is 9600 and gateway usually have 57600
-                            # this means we need to watch out that the internal gateay buffer does not overflow
+                            # this means we need to watch out that the internal gateway buffer does not overflow
                             # fam14 (baudrate 57600) delay_message=.001
                             # fam14 (baudrate 9600) delay_message=.001
                             # fam-usb (baudrate 9600) delay_message=.001

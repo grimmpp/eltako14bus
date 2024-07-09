@@ -598,6 +598,54 @@ class M5_38_08(_EltakoSwitchingCommand):
 # MARK: - Heating and Cooling
 # ======================================
 
+class _TempControl(EEP):
+    max_cur_temp:float = 40
+    min_des_temp:float = 8
+    max_des_temp:float = 30
+    usr:float = 255.0 # unscaled range 
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org == 0x07:
+
+            
+            # reversed range (from 40° to 0°)
+            current_temp = ((cls.usr - msg.data[2]) / cls.usr) * cls.min_cur_temp
+            # range from 8° to 30°
+            target_temp = (msg.data[1] / cls.usr) * (cls.max_des_temp - cls.min_des_temp)
+
+            return cls(target_temp, current_temp)
+        else:
+            raise WrongOrgError
+
+    def encode_message(self, address):
+        data = bytearray([0, 0, 0, 0])
+
+        # reversed range (from 40° to 0°)
+        data[2] = int((self.max_cur_temp - self.current_temperature) / self.max_cur_temp * self.usr)
+        # range from 8° to 30°
+        data[1] = int(self.target_temperature / (self.max_des_temp - self.min_des_temp) * self.usr)
+        
+        status = 0x00
+
+        return Regular4BSMessage(address, status, data, True)
+    
+    @property
+    def target_temperature(self):
+        return self._target_temp
+    
+    @property
+    def current_temperature(self):
+        return self._current_temp
+    
+    def __init__(self, target_temp: float, current_temp: float):
+        self._target_temp = target_temp
+        self._current_temp = current_temp
+
+
+class A5_10_03(_TempControl):
+    """Thermostat - current and desired temperature"""
+
 class _HeatingCooling(EEP):
     min_temp:float = 0
     max_temp:float = 40
