@@ -2,6 +2,10 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.0.58 Added EPP A5-10-03 for thermostat
+
+## 0.0.57 Improved FTD14 handling
+
 ## 0.0.56 Added Sensor support for FTD14
 - Sensors/Memory list of FTD14 can be read out
 
