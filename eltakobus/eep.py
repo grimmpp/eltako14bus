@@ -610,7 +610,7 @@ class _TempControl(EEP):
 
             
             # reversed range (from 40° to 0°)
-            current_temp = ((cls.usr - msg.data[2]) / cls.usr) * cls.min_cur_temp
+            current_temp = ((cls.usr - msg.data[2]) / cls.usr) * cls.max_cur_temp
             # range from 8° to 30°
             target_temp = (msg.data[1] / cls.usr) * (cls.max_des_temp - cls.min_des_temp)
 
