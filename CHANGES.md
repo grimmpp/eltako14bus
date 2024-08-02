@@ -2,7 +2,7 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
-## 0.0.60 Added EEP F6-01-01 for one-/push-button switch
+## 0.0.61 Added EEP F6-01-01 for one-/push-button switch
 
 ## 0.0.59 Added EPP A5-10-03 for thermostat
 
