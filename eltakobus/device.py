@@ -754,6 +754,10 @@ class FSR14_2x(FSR14):
     discovery_names = [ bytes((0x04, 0x02)) ]
     size = 2
 
+class FSR14M_2x(FSR14):
+    discovery_names = [ bytes((0x04, 0x0b)) ]
+    size = 2
+
 class FSR14_4x(FSR14):
     discovery_names = [ bytes((0x04, 0x01)) ]
     size = 4
@@ -1079,7 +1083,7 @@ class FTD14(BusObject):
 
 
 
-known_objects = [FAM14, FUD14, FUD14_800W, FSB14, FSR14_1x, FSR14_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A, FSG14_1_10V, FGW14_USB, FDG14, FD2G14, FHK14, F4HK14, FAE14SSR, FTD14]
+known_objects = [FAM14, FUD14, FUD14_800W, FSB14, FSR14_1x, FSR14_2x, FSR14M_2x, FSR14_4x, F4SR14_LED, F3Z14D, FMZ14, FWG14MS, FSU14, FMSR14, FWZ14_65A, FSG14_1_10V, FGW14_USB, FDG14, FD2G14, FHK14, F4HK14, FAE14SSR, FTD14]
 # sorted so the first match of (discovery name is a prefix, size matches) can be used
 sorted_known_objects = sorted(known_objects, key=lambda o: len(o.discovery_names[0]) + 0.5 * (o.size is not None), reverse=True)
 
