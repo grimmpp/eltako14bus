@@ -621,18 +621,19 @@ class HasProgrammableRPS:
         memory_range = self.programmable_rps
         if profile in [F6_02_01, F6_02_02]:
             a, discriminator = source
-            if discriminator == "left":
-                # programmed as function 3, key is 5 for left
-                expected_line = a + bytes((5, 3, 1 << subchannel, 0))
-            elif discriminator == 'right':
+            #default left
+            if discriminator == "right":
                 # programmed as function 3, key is 6 for right
                 expected_line = a + bytes((6, 3, 1 << subchannel, 0))
             else:
-                raise ValueError("Unknown discriminator on address %s" % (source,))
+                # programmed as function 3, key is 5 for left
+                expected_line = a + bytes((5, 3, 1 << subchannel, 0))
+
         elif profile in [A5_38_08, H5_3F_7F]:
             a, discriminator = source
             # 51 GFVS = House Automation SW
             expected_line = a + bytes((0, self.gfvs_code, 1 << subchannel, 0))
+            
         elif profile in [A5_10_06]:
             a, discriminator = source
             # 65 GFVS = House Automation SW

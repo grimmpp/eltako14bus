@@ -2,6 +2,9 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.0.63 Write sender with EEP F6-02-01 into actuator improved.
+* Writing sender into actuator list with EEP F6-02-01/02. default: left push button
+
 ## 0.0.62 Added device FSR14M-2x 
 
 ## 0.0.61 Added EEP F6-01-01 for one-/push-button switch
