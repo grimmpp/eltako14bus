@@ -728,7 +728,7 @@ class _HeatingCooling(EEP):
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
 
-        data[3] = self.ControllerPriority.HOME_AUTOMATION
+        data[3] = self.ControllerPriority.HOME_AUTOMATION.value
 
         # reversed range (from 40° to 0°)
         data[2] = int((self.max_temp - self.current_temperature) / self.max_temp * self.usr)
