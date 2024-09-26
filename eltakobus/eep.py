@@ -684,6 +684,19 @@ class _HeatingCooling(EEP):
     max_temp:float = 40
     usr:float = 255.0 # unscaled range 
 
+    class ControllerPriority(Enum):
+        ## TT = Target Temperature
+        ## CT = Current Temperature
+        AUTO = 0x0E                # 00-TT-00-0E   no Priority (thermostat and controller have same prio)
+        HOME_AUTOMATION = 0x08     # 00-TT-00-08   only values from softare controller, registered in actuator, are considered 
+        THERMOSTAT = 0x0E          # 00-00-00-0E   only values from thermostat, registered in actuator, are considered (disables softeare controller)
+        LIMIT = 0x0A               # 00-TT-00-0A   Controller defines target temperature and thermostat can change it in a range of -3 to + 3 degree
+        ACTUATOR_ACK = 0x0F        # 00-TT-CT-0F
+
+        # DB0.1 = 1: no Prio [0E]
+        # DB0.1 = 0: Prio   [0A,08]
+        # DB0.2 = 1: limits thermostat range to +/-3°K [0A]
+
     class Heater_Mode(Enum):
         NORMAL = 0
         STAND_BY_2_DEGREES = 1
@@ -715,9 +728,7 @@ class _HeatingCooling(EEP):
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
 
-        data[3] = 15
-        if self.stand_by:
-            data[3] = 14
+        data[3] = self.ControllerPriority.HOME_AUTOMATION
 
         # reversed range (from 40° to 0°)
         data[2] = int((self.max_temp - self.current_temperature) / self.max_temp * self.usr)
@@ -732,7 +743,7 @@ class _HeatingCooling(EEP):
         elif self.mode == _HeatingCooling.Heater_Mode.OFF:
             data[1] = 0
         
-        status = 0x00
+        status = 0x80
 
         return Regular4BSMessage(address, status, data, True)
 
