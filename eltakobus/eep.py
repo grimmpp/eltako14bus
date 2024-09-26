@@ -702,6 +702,7 @@ class _HeatingCooling(EEP):
         STAND_BY_2_DEGREES = 0x30           # -2°K degree off-set mode              
         NIGHT_SET_BACK_4_DEGREES = 0x50     # night set back (-4°K)
         OFF = 0x10                          # Off
+        UNKNOWN = 0x00
 
     @classmethod
     def decode_message(cls, msg):
