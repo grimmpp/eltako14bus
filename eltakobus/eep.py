@@ -698,10 +698,10 @@ class _HeatingCooling(EEP):
         # DB0.2 = 1: limits thermostat range to +/-3°K [0A]
 
     class Heater_Mode(Enum):
-        NORMAL = 0
-        STAND_BY_2_DEGREES = 1
-        NIGHT_SET_BACK_4_DEGREES = 2
-        OFF = 3
+        NORMAL = 0x70                       # normal mode
+        STAND_BY_2_DEGREES = 0x30           # -2°K degree off-set mode              
+        NIGHT_SET_BACK_4_DEGREES = 0x50     # night set back (-4°K)
+        OFF = 0x10                          # Off
 
     @classmethod
     def decode_message(cls, msg):
