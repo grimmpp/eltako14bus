@@ -689,11 +689,11 @@ class _HeatingCooling(EEP):
     class ControllerPriority(DefaultEnum):
         ## TT = Target Temperature
         ## CT = Current Temperature
-        AUTO = 0x0E                # 00-TT-00-0E   no Priority (thermostat and controller have same prio)
-        HOME_AUTOMATION = 0x08     # 00-TT-00-08   only values from softare controller, registered in actuator, are considered 
-        THERMOSTAT = 0x0E          # 00-00-00-0E   only values from thermostat, registered in actuator, are considered (disables softeare controller)
-        LIMIT = 0x0A               # 00-TT-00-0A   Controller defines target temperature and thermostat can change it in a range of -3 to + 3 degree
-        ACTUATOR_ACK = 0x0F        # 00-TT-CT-0F
+        AUTO = (0x0E, 'Auto')                      # 00-TT-00-0E   no Priority (thermostat and controller have same prio)
+        HOME_AUTOMATION = (0x08, 'Home Assistant') # 00-TT-00-08   only values from softare controller, registered in actuator, are considered 
+        THERMOSTAT = (0x0E, 'Thermostat')          # 00-00-00-0E   only values from thermostat, registered in actuator, are considered (disables softeare controller)
+        LIMIT = (0x0A, 'Limited Thermostat Range (±3°K)') # 00-TT-00-0A   Controller defines target temperature and thermostat can change it in a range of -3 to + 3 degree
+        ACTUATOR_ACK = (0x0F, 'Actuator Response') # 00-TT-CT-0F
 
         # DB0.1 = 1: no Prio [0E]
         # DB0.1 = 0: Prio   [0A,08]
