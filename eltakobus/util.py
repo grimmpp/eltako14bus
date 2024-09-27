@@ -54,7 +54,7 @@ class DefaultEnum(Enum):
             obj = super().__new__(cls, value)
             obj.description = description
             return obj
-        except ValueError:
+        except TypeError:
             return cls.DEFAULT
         
     def __repr__(self) -> str:
