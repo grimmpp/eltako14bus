@@ -56,7 +56,7 @@ class DefaultEnum(Enum):
         return obj
 
     @property
-    def index(self) -> int:
+    def value(self) -> int:
         return self._value_
 
     @property
