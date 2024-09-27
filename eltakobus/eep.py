@@ -753,13 +753,13 @@ class _HeatingCooling(EEP):
     
     @property
     def priority(self) -> ControllerPriority:
-        return self.priority
+        return self._priority
 
     def __init__(self, mode: HeaterMode, target_temp: float, current_temp: float, priority: ControllerPriority=ControllerPriority.AUTO):
         self._mode  = mode
         self._target_temp = target_temp
         self._current_temp = current_temp
-        self.priority = priority
+        self._priority = priority
 
 
 class A5_10_06(_HeatingCooling):
