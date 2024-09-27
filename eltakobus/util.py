@@ -47,7 +47,7 @@ class AddressExpression(tuple):
 
 class DefaultEnum(Enum):
 
-    DEFAULT = (0, 'Unknown')
+    # DEFAULT = (0, 'Unknown')
 
     # def __new__(cls, value, description=None):
     #     try:
