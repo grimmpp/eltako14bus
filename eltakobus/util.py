@@ -49,6 +49,11 @@ class DefaultEnum(Enum):
 
     # DEFAULT = (0, 'Unknown')
 
+    def __new__(cls, value, description=None):
+        obj = super().__new__(cls, value)
+        obj.description = description
+        return obj
+
     # def __new__(cls, value, description=None):
     #     try:
     #         obj = super().__new__(cls, value)
