@@ -47,17 +47,36 @@ class AddressExpression(tuple):
 
 class DefaultEnum(Enum):
 
-    # DEFAULT = (0, 'Unknown')
+    # DEFAULT = (0, , 0'Unknown')
 
-    def __new__(cls, value, description:str=None):
+    def __new__(cls, value, code:int=0, description:str=None):
         obj = object.__new__(cls)
         obj._value_ = value
+        obj._code = code
         obj._description = description
         return obj
+    
+    @classmethod
+    def find_by_code(cls, code):
+        for e in cls:
+            if e.code == code:
+                return e
+        return None
+    
+    @classmethod
+    def find_by_description(cls, description):
+        for e in cls:
+            if e.description == description:
+                return e
+        return None
 
     @property
     def value(self) -> int:
         return self._value_
+
+    @property
+    def code(self) -> str:
+        return self._code
 
     @property
     def description(self) -> str:
@@ -66,6 +85,8 @@ class DefaultEnum(Enum):
     def __repr__(self) -> str:
         v_repr = self.__class__._value_repr_ or repr
         repr = "<%s.%s: %s " % (self.__class__.__name__, self._name_, v_repr(self._value_))
+        if self.code:
+            repr += '"%S"' % (self.code)
         if self.description:
             repr += '"%S"' % (self.description)
         repr += '>'

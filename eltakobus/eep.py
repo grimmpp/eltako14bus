@@ -689,17 +689,17 @@ class _HeatingCooling(EEP):
     class ControllerPriority(DefaultEnum):
         ## TT = Target Temperature
         ## CT = Current Temperature
-        AUTO = (0x0E, 'Auto')                      # 00-TT-00-0E   no Priority (thermostat and controller have same prio)
-        HOME_AUTOMATION = (0x08, 'Home Assistant') # 00-TT-00-08   only values from softare controller, registered in actuator, are considered 
-        THERMOSTAT = (0x0E, 'Thermostat')          # 00-00-00-0E   only values from thermostat, registered in actuator, are considered (disables softeare controller)
-        LIMIT = (0x0A, 'Limited Thermostat Range (±3°K)') # 00-TT-00-0A   Controller defines target temperature and thermostat can change it in a range of -3 to + 3 degree
-        ACTUATOR_ACK = (0x0F, 'Actuator Response') # 00-TT-CT-0F
+        AUTO = (1, 0x0E, 'Auto')                      # 00-TT-00-0E   no Priority (thermostat and controller have same prio)
+        HOME_AUTOMATION = (2, 0x08, 'Home Assistant') # 00-TT-00-08   only values from softare controller, registered in actuator, are considered 
+        THERMOSTAT = (3, 0x0E, 'Thermostat')          # 00-00-00-0E   only values from thermostat, registered in actuator, are considered (disables softeare controller)
+        LIMIT = (4, 0x0A, 'Limited Thermostat Range (±3°K)') # 00-TT-00-0A   Controller defines target temperature and thermostat can change it in a range of -3 to + 3 degree
+        ACTUATOR_ACK = (5, 0x0F, 'Actuator Response') # 00-TT-CT-0F
 
         # DB0.1 = 1: no Prio [0E]
         # DB0.1 = 0: Prio   [0A,08]
         # DB0.2 = 1: limits thermostat range to +/-3°K [0A]
 
-    class HeaterMode(DefaultEnum):
+    class HeaterMode(Enum):
         NORMAL = 0x70                       # normal mode
         STAND_BY_2_DEGREES = 0x30           # -2°K degree off-set mode              
         NIGHT_SET_BACK_4_DEGREES = 0x50     # night set back (-4°K)
@@ -710,7 +710,7 @@ class _HeatingCooling(EEP):
     def decode_message(cls, msg):
         if msg.org == 0x07:
 
-            priority = cls.ControllerPriority(msg.data[3])
+            priority = cls.ControllerPriority.find_by_code(msg.data[3])
             # reversed range (from 40° to 0°)
             current_temp = ((cls.usr - msg.data[2]) / cls.usr) * cls.max_temp
             target_temp = (msg.data[1] / cls.usr) * cls.max_temp
@@ -726,7 +726,7 @@ class _HeatingCooling(EEP):
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
 
-        data[3] = self.priority.value
+        data[3] = self.priority.code
 
         # reversed range (from 40° to 0°)
         data[2] = int((self.max_temp - self.current_temperature) / self.max_temp * self.usr)
