@@ -55,6 +55,9 @@ class DefaultEnum(Enum):
             obj.description = description
             return obj
         except TypeError:
+            if 'DEFAULT' not in cls._member_names_:
+                cls.DEFAULT = super().__new__(cls, 0)
+                cls.DEFAULT = 'Unknown'
             return cls.DEFAULT
         
     def __repr__(self) -> str:
