@@ -1,3 +1,5 @@
+from enum import Enum
+
 def b2a(rawdata, separator=' '):
     # like binascii.b2a_hex, but directly to unicode for printing, and with nice spacing
     return separator.join("%02x"%b for b in rawdata)
@@ -42,3 +44,23 @@ class AddressExpression(tuple):
         if self[1] is not None:
             raise ValueError("Address has disciminator %s, None expected" % self[1])
         return self[0]
+
+class DefaultEnum(Enum):
+
+    DEFAULT = (0, 'Unknown')
+
+    def __new__(cls, value, description=None):
+        try:
+            obj = super().__new__(cls, value)
+            obj.description = description
+            return obj
+        except ValueError:
+            return cls.DEFAULT
+        
+    def __repr__(self) -> str:
+        v_repr = self.__class__._value_repr_ or repr
+        repr = "<%s.%s: %s " % (self.__class__.__name__, self._name_, v_repr(self._value_))
+        if self.description:
+            repr += '"%S"' % (self.description)
+        repr += '>'
+        return repr

@@ -1,4 +1,6 @@
 from enum import Enum
+
+from eltakobus.util import DefaultEnum
 from .error import NotImplementedError, WrongOrgError
 from .message import RPSMessage, Regular1BSMessage, Regular4BSMessage
 import re
@@ -684,7 +686,7 @@ class _HeatingCooling(EEP):
     max_temp:float = 40
     usr:float = 255.0 # unscaled range 
 
-    class ControllerPriority(Enum):
+    class ControllerPriority(DefaultEnum):
         ## TT = Target Temperature
         ## CT = Current Temperature
         AUTO = 0x0E                # 00-TT-00-0E   no Priority (thermostat and controller have same prio)
@@ -697,7 +699,7 @@ class _HeatingCooling(EEP):
         # DB0.1 = 0: Prio   [0A,08]
         # DB0.2 = 1: limits thermostat range to +/-3°K [0A]
 
-    class Heater_Mode(Enum):
+    class HeaterMode(DefaultEnum):
         NORMAL = 0x70                       # normal mode
         STAND_BY_2_DEGREES = 0x30           # -2°K degree off-set mode              
         NIGHT_SET_BACK_4_DEGREES = 0x50     # night set back (-4°K)
@@ -708,48 +710,37 @@ class _HeatingCooling(EEP):
     def decode_message(cls, msg):
         if msg.org == 0x07:
 
-            night_setback = msg.data[3] % 2 == 0
+            priority = cls.ControllerPriority(msg.data[3])
             # reversed range (from 40° to 0°)
             current_temp = ((cls.usr - msg.data[2]) / cls.usr) * cls.max_temp
             target_temp = (msg.data[1] / cls.usr) * cls.max_temp
             
-            mode = cls.Heater_Mode.NORMAL
-            d3 = msg.data[0]
-            if d3 == 25:
-                mode = cls.Heater_Mode.NIGHT_SET_BACK_4_DEGREES
-            elif d3 == 12:
-                mode = cls.Heater_Mode.STAND_BY_2_DEGREES
-            elif d3 == 0 and target_temp == 0:
-                mode = cls.Heater_Mode.OFF
+            mode = cls.HeaterMode(msg.data[0])
+            if mode.value == 0 and target_temp == 0:
+                mode = cls.HeaterMode.OFF
 
-            return cls(mode, target_temp, current_temp, night_setback)
+            return cls(mode, target_temp, current_temp, priority)
         else:
             raise WrongOrgError
 
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
 
-        data[3] = self.ControllerPriority.HOME_AUTOMATION.value
+        data[3] = self.priority.value
 
         # reversed range (from 40° to 0°)
         data[2] = int((self.max_temp - self.current_temperature) / self.max_temp * self.usr)
 
         data[1] = int(self.target_temperature / self.max_temp * self.usr)
         
-        data[0] = 0
-        if self.mode == _HeatingCooling.Heater_Mode.NIGHT_SET_BACK_4_DEGREES:
-            data[0] = 25
-        elif self.mode == _HeatingCooling.Heater_Mode.STAND_BY_2_DEGREES:
-            data[0] = 12
-        elif self.mode == _HeatingCooling.Heater_Mode.OFF:
-            data[1] = 0
+        data[0] = self.mode.value
         
         status = 0x80
 
         return Regular4BSMessage(address, status, data, True)
 
     @property
-    def mode(self):
+    def mode(self) -> HeaterMode:
         return self._mode
     
     @property
@@ -761,14 +752,14 @@ class _HeatingCooling(EEP):
         return self._current_temp
     
     @property
-    def stand_by(self):
-        return self._stand_by
+    def priority(self) -> ControllerPriority:
+        return self.priority
 
-    def __init__(self, mode: Heater_Mode, target_temp: float, current_temp: float, stand_by: bool):
+    def __init__(self, mode: HeaterMode, target_temp: float, current_temp: float, priority: ControllerPriority=ControllerPriority.AUTO):
         self._mode  = mode
         self._target_temp = target_temp
         self._current_temp = current_temp
-        self._stand_by = stand_by
+        self.priority = priority
 
 
 class A5_10_06(_HeatingCooling):
