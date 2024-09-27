@@ -49,16 +49,16 @@ class DefaultEnum(Enum):
 
     DEFAULT = (0, 'Unknown')
 
-    def __new__(cls, value, description=None):
-        try:
-            obj = super().__new__(cls, value)
-            obj.description = description
-            return obj
-        except TypeError:
-            if 'DEFAULT' not in cls._member_names_:
-                cls.DEFAULT = super().__new__(cls, 0)
-                cls.DEFAULT = 'Unknown'
-            return cls.DEFAULT
+    # def __new__(cls, value, description=None):
+    #     try:
+    #         obj = super().__new__(cls, value)
+    #         obj.description = description
+    #         return obj
+    #     except TypeError:
+    #         if 'DEFAULT' not in cls._member_names_:
+    #             cls.DEFAULT = super().__new__(cls, 0)
+    #             cls.DEFAULT = 'Unknown'
+    #         return cls.DEFAULT
         
     def __repr__(self) -> str:
         v_repr = self.__class__._value_repr_ or repr
