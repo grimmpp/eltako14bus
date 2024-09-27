@@ -51,6 +51,7 @@ class DefaultEnum(Enum):
 
     def __new__(cls, value, description=None):
         obj = super().__new__(cls, value)
+        obj._value_ = value
         obj.description = description
         return obj
 
