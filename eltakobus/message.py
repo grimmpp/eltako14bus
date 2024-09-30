@@ -1,5 +1,5 @@
 from .error import ParseError
-from .util import b2a
+from .util import b2a, b2s
 
 def prettify(message):
     """Given a ESP2Message, try parsing this as all the known message classes
