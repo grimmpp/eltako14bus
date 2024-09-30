@@ -230,7 +230,7 @@ class EltakoMessage(ESP2Message):
         return EltakoMessage(org, address, payload, is_request)
 
     def __repr__(self):
-        return "<%s %s ORG %02x ADDR %02x, %s>"%(type(self).__name__, ["Response", "Request"][self.is_request], self.org, self.address, b2a(self.payload))
+        return "<%s %s ORG %02x ADDR %02x, %s>"%(type(self).__name__, ["Response", "Request"][self.is_request], self.org, self.address, b2s(self.payload))
 
 class EltakoWrappedRPS(ESP2Message):
     """A response to Eltako bus polling that encapsulates a RPS message; it is

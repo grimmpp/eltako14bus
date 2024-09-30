@@ -6,7 +6,7 @@ def b2a(rawdata, separator=' '):
 
 def b2s(rawdata, separator='-'):
     # like binascii.b2a_hex, but directly to unicode for printing, and with nice spacing
-    return separator.join("%02x"%b for b in rawdata).upper()
+    return b2a(rawdata, separator).upper()
 
 def combine_hex(data):
     ''' Combine list of integer values to one big integer '''
@@ -27,7 +27,7 @@ class AddressExpression(tuple):
         return "<%s %s>" % (type(self).__name__, self)
 
     def __str__(self):
-        return b2a(self[0]).replace(' ', '-') + (" %s" % self[1] if self[1] is not None else "")
+        return b2s(self[0]) + (" %s" % self[1] if self[1] is not None else "")
 
     @classmethod
     def parse(cls, s):
