@@ -715,9 +715,12 @@ class _HeatingCooling(EEP):
             current_temp = ((cls.usr - msg.data[2]) / cls.usr) * cls.max_temp
             target_temp = (msg.data[1] / cls.usr) * cls.max_temp
             
-            mode = cls.HeaterMode(msg.data[0])
-            if mode.value == 0 and target_temp == 0:
-                mode = cls.HeaterMode.OFF
+            try:
+                mode = cls.HeaterMode(msg.data[0])
+                if mode.value == 0 and target_temp == 0:
+                    mode = cls.HeaterMode.OFF
+            except:
+                mode = cls.HeaterMode.UNKNOWN
 
             return cls(mode, target_temp, current_temp, priority)
         else:
