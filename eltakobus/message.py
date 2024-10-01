@@ -1,5 +1,5 @@
 from .error import ParseError
-from .util import b2a
+from .util import b2a, b2s
 
 def prettify(message):
     """Given a ESP2Message, try parsing this as all the known message classes
@@ -97,7 +97,7 @@ class RPSMessage(ESP2Message):
     rp_count = property(lambda self: self.status & 0xf)
 
     def __repr__(self):
-        return "<%s from %s, db0 = %s, status = 0x%02x (T%s, %s, %d repetitions)>"%(type(self).__name__, b2a(self.address), b2a(self.data), self.status, self.t21, self.nu, self.rp_count)
+        return "<%s from %s, db0 = %s, status = 0x%02x (T%s, %s, %d repetitions)>"%(type(self).__name__, b2s(self.address), b2s(self.data), self.status, self.t21, self.nu, self.rp_count)
 
 class _1BSMessage(ESP2Message):
     org = 0x06
@@ -135,7 +135,7 @@ class Regular1BSMessage(_1BSMessage):
     teach_in = False
 
     def __repr__(self):
-        return "<%s from %s, data %s, status = 0x%02x>"%(type(self).__name__, b2a(self.address), b2a(self.data), self.status)
+        return "<%s from %s, data %s, status = 0x%02x>"%(type(self).__name__, b2s(self.address), b2s(self.data), self.status)
 
 class _4BSMessage(ESP2Message):
     org = 0x07
@@ -171,7 +171,7 @@ class Regular4BSMessage(_4BSMessage):
     teach_in = False
 
     def __repr__(self):
-        return "<%s from %s, data %s, status = 0x%02x>"%(type(self).__name__, b2a(self.address), b2a(self.data), self.status)
+        return "<%s from %s, data %s, status = 0x%02x>"%(type(self).__name__, b2s(self.address), b2s(self.data), self.status)
 
 class TeachIn4BSMessage2(_4BSMessage):
     """A Variation 2 (LRN type 1 and nothing bidirectional) 4BS Teach-In telegram"""
@@ -193,7 +193,7 @@ class TeachIn4BSMessage2(_4BSMessage):
     manufacturer = property(lambda self: ((self.data[1] & 0x07) << 8) | self.data[2])
 
     def __repr__(self):
-        return "<%s from %s, profile %02x-%02x-%02x, manufacturer %d>"%(type(self).__name__, b2a(self.address), *self.profile, self.manufacturer)
+        return "<%s from %s, profile %02x-%02x-%02x, manufacturer %d>"%(type(self).__name__, b2s(self.address), *self.profile, self.manufacturer)
 
 class EltakoMessage(ESP2Message):
     """A control message of the Eltako bus.
@@ -230,7 +230,7 @@ class EltakoMessage(ESP2Message):
         return EltakoMessage(org, address, payload, is_request)
 
     def __repr__(self):
-        return "<%s %s ORG %02x ADDR %02x, %s>"%(type(self).__name__, ["Response", "Request"][self.is_request], self.org, self.address, b2a(self.payload))
+        return "<%s %s ORG %02x ADDR %02x, %s>"%(type(self).__name__, ["Response", "Request"][self.is_request], self.org, self.address, b2s(self.payload))
 
 class EltakoWrappedRPS(ESP2Message):
     """A response to Eltako bus polling that encapsulates a RPS message; it is
@@ -259,7 +259,7 @@ class EltakoWrappedRPS(ESP2Message):
     body = property(lambda self: EltakoMessage(org=self.org, address=self.status, payload=self.data + bytes((0, 0, 0)) + self.address, is_request=False).body)
 
     def __repr__(self):
-        return "<%s from %s, status %02x, data %s>" % (type(self).__name__, b2a(self.address), self.status, b2a(self.data))
+        return "<%s from %s, status %02x, data %s>" % (type(self).__name__, b2s(self.address), self.status, b2s(self.data))
 
 class EltakoWrapped1BS(ESP2Message):
     """Like EltakoWrappedRPS, but the 1BS variety."""
@@ -283,7 +283,7 @@ class EltakoWrapped1BS(ESP2Message):
     body = property(lambda self: EltakoMessage(org=self.org, address=self.status, payload=self.data + bytes((0, 0, 0)) + self.address, is_request=False).body)
 
     def __repr__(self):
-        return "<%s from %s, status %02x, data %s>" % (type(self).__name__, b2a(self.address), self.status, b2a(self.data))
+        return "<%s from %s, status %02x, data %s>" % (type(self).__name__, b2s(self.address), self.status, b2s(self.data))
 
 class EltakoWrapped4BS(ESP2Message):
     """Like EltakoWrappedRPS, but the 4BS variety."""
@@ -305,7 +305,7 @@ class EltakoWrapped4BS(ESP2Message):
     body = property(lambda self: EltakoMessage(org=self.org, address=self.status, payload=self.data + self.address, is_request=False).body)
 
     def __repr__(self):
-        return "<%s from %s, status %02x, data %s>" % (type(self).__name__, b2a(self.address), self.status, b2a(self.data))
+        return "<%s from %s, status %02x, data %s>" % (type(self).__name__, b2s(self.address), self.status, b2s(self.data))
 
 class EltakoStaticMessage(EltakoMessage):
     """Base class for any kind of message that has no variance in it at all"""

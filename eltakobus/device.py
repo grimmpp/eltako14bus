@@ -673,16 +673,15 @@ class HasProgrammableRPS:
         await self.bus.send(ESP2Message(b"\x0b\x05" + bytes([db0]) + b"\0\0\0" + sender + b"\30"))
 
 class FSR14(BusObject, HasProgrammableRPS):
+    sensor_address_range = range(8, 127)
+    sensors_func_group_1 = range(8,12)
+    sensors_func_group_2 = range(12,127)
+    gfvs_code = KeyFunction.SWITCHING_STATE_FROM_CONTROLLER
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.programmable_rps = (12, self.memory_size)
-        self.gfvs_code = KeyFunction.SWITCHING_STATE_FROM_CONTROLLER
-        self.sensors_func_group_1 = range(8,12)
-        self.sensors_func_group_2 = range(12,127)
-        self.sensor_address_range = range(8, 127)
-
-
+        
 
     async def show_off(self):
         await super().show_off()

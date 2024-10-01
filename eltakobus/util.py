@@ -1,10 +1,12 @@
+from enum import Enum
+
 def b2a(rawdata, separator=' '):
     # like binascii.b2a_hex, but directly to unicode for printing, and with nice spacing
     return separator.join("%02x"%b for b in rawdata)
 
 def b2s(rawdata, separator='-'):
     # like binascii.b2a_hex, but directly to unicode for printing, and with nice spacing
-    return separator.join("%02x"%b for b in rawdata).upper()
+    return b2a(rawdata, separator).upper()
 
 def combine_hex(data):
     ''' Combine list of integer values to one big integer '''
@@ -25,7 +27,7 @@ class AddressExpression(tuple):
         return "<%s %s>" % (type(self).__name__, self)
 
     def __str__(self):
-        return b2a(self[0]).replace(' ', '-') + (" %s" % self[1] if self[1] is not None else "")
+        return b2s(self[0]) + (" %s" % self[1] if self[1] is not None else "")
 
     @classmethod
     def parse(cls, s):
@@ -42,3 +44,50 @@ class AddressExpression(tuple):
         if self[1] is not None:
             raise ValueError("Address has disciminator %s, None expected" % self[1])
         return self[0]
+
+class DefaultEnum(Enum):
+
+    # DEFAULT = (0, , 0'Unknown')
+
+    def __new__(cls, value, code:int=0, description:str=None):
+        obj = object.__new__(cls)
+        obj._value_ = value
+        obj._code = code
+        obj._description = description
+        return obj
+    
+    @classmethod
+    def find_by_code(cls, code):
+        for e in cls:
+            if e.code == code:
+                return e
+        return None
+    
+    @classmethod
+    def find_by_description(cls, description):
+        for e in cls:
+            if e.description == description:
+                return e
+        return None
+
+    @property
+    def value(self) -> int:
+        return self._value_
+
+    @property
+    def code(self) -> str:
+        return self._code
+
+    @property
+    def description(self) -> str:
+        return self._description
+        
+    def __repr__(self) -> str:
+        v_repr = self.__class__._value_repr_ or repr
+        repr = "<%s.%s: %s " % (self.__class__.__name__, self._name_, v_repr(self._value_))
+        if self.code:
+            repr += '"%S"' % (self.code)
+        if self.description:
+            repr += '"%S"' % (self.description)
+        repr += '>'
+        return repr
