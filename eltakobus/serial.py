@@ -98,6 +98,14 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
             if callable is not None:
                 while not self.transmit.empty(): self.transmit.get()
 
+    async def send_base_id_request(self):
+        data = b'\xAB\x58\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        await self.send(ESP2Message(bytes(data)))
+
+    async def send_version_request(self):
+        data = b'\xAB\x4B\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        await self.send(ESP2Message(bytes(data)))
+
     def echotest(self):
         echotest = b'\xff\x00\xff' * 5 # long enough that it can not be contained in any EnOcean message
 

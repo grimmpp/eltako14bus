@@ -2,7 +2,9 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
-## 0.0.63 Refactored A5_10_06 (Heating and Cooling)
+## 0.0.65 Added command to query for gateway base id and version
+
+## 0.0.64 Refactored A5_10_06 (Heating and Cooling)
 * Refactored A5_10_06 (Heating and Cooling)
 * Cleaned up devices.py
 
