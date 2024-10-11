@@ -2,6 +2,8 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.0.66 Fixed EEP A5-04-02 and added default values for EEPs
+
 ## 0.0.65 Added command to query for gateway base id and version
 
 ## 0.0.64 Refactored A5_10_06 (Heating and Cooling)
