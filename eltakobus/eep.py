@@ -49,7 +49,9 @@ class _switch_button(EEP):
 
     def encode_message(self, address):
         data = bytearray([0])
-        data[0] = 0x10
+
+        if self._button_pushed:
+            data[0] = 0x10
         
         status = 0x20
         
@@ -59,7 +61,7 @@ class _switch_button(EEP):
     def button_pushed(self):
         return self._button_pushed
     
-    def __init__(self, button_pushed):
+    def __init__(self, button_pushed:bool=True):
         self._button_pushed = button_pushed
 
 
@@ -179,7 +181,7 @@ class _WindowHandle(EEP):
     def handle_position(self):
         return self._handle_position
 
-    def __init__(self, movement, handle_position: WindowHandlePosition):
+    def __init__(self, movement:int=0, handle_position:WindowHandlePosition=WindowHandlePosition.CLOSED):
         self._movement = movement
         self._handle_position = handle_position
 
@@ -218,7 +220,7 @@ class _SingleInputContact(EEP):
     def contact(self):
         return self._contact
 
-    def __init__(self, learn_button, contact):
+    def __init__(self, learn_button:int=1, contact:int=9):
         self._learn_button = learn_button
         self._contact = contact
 
@@ -230,6 +232,13 @@ class D5_00_01(_SingleInputContact):
 # ======================================
 
 class _LightTemperatureOccupancySensor(EEP):
+    temp_min = 0.0
+    temp_max = 51.0
+    illu_min = 0.0
+    illu_max = 510.0
+    volt_min = 0.0
+    volt_max = 5.1
+
     @classmethod
     def decode_message(cls, msg):
         if msg.org != 0x07:
@@ -288,7 +297,7 @@ class _LightTemperatureOccupancySensor(EEP):
     def occupancy_button(self):
         return self._occupancy_button
 
-    def __init__(self, supply_voltage, illumination, temperature, learn_button, pir_status, occupancy_button):
+    def __init__(self, supply_voltage:int=0, illumination:int=0, temperature:int=0, learn_button:int=1, pir_status:int=0, occupancy_button:int=0):
         self._supply_voltage = supply_voltage
         self._illumination = illumination
         self._temperature = temperature
@@ -298,12 +307,7 @@ class _LightTemperatureOccupancySensor(EEP):
 
 class A5_08_01(_LightTemperatureOccupancySensor):
     """Light, Temperature and Occupancy sensor"""
-    temp_min = 0.0
-    temp_max = 51.0
-    illu_min = 0.0
-    illu_max = 510.0
-    volt_min = 0.0
-    volt_max = 5.1
+    
 
 class VOC_Unit(Enum):
 
@@ -428,7 +432,7 @@ class _AirQualitySensor(EEP):
     def encode_message(self, address):
         raise Exception("NOT IMPLEMENTED!")
 
-    def __init__(self, concentration:float, voc_type:VOC_SubstancesType, voc_unit:VOC_Unit, learn_button):
+    def __init__(self, concentration:float=0, voc_type:VOC_SubstancesType=VOC_SubstancesType.VOCT_TOTAL, voc_unit:VOC_Unit=VOC_Unit.PPB, learn_button:int=1):
         self._concentration = concentration
         self._voc_type = voc_type
         self._voc_unit = voc_unit
@@ -673,7 +677,7 @@ class _TempControl(EEP):
     def current_temperature(self):
         return self._current_temp
     
-    def __init__(self, target_temp: float, current_temp: float):
+    def __init__(self, target_temp:float=0, current_temp:float=0):
         self._target_temp = target_temp
         self._current_temp = current_temp
 
@@ -758,7 +762,7 @@ class _HeatingCooling(EEP):
     def priority(self) -> ControllerPriority:
         return self._priority
 
-    def __init__(self, mode: HeaterMode, target_temp: float, current_temp: float, priority: ControllerPriority=ControllerPriority.AUTO):
+    def __init__(self, mode:HeaterMode=HeaterMode.NORMAL, target_temp:float=40, current_temp:float=min_temp, priority: ControllerPriority=ControllerPriority.AUTO):
         self._mode  = mode
         self._target_temp = target_temp
         self._current_temp = current_temp
@@ -810,7 +814,7 @@ class _HeatingCoolingHumidity(EEP):
     def humidity(self):
         return self._humidity
     
-    def __init__(self, current_temperature, target_temperature, humidity):
+    def __init__(self, current_temperature:int=0, target_temperature:int=0, humidity:int=0):
         self._current_temperature = current_temperature
         self._target_temperature = target_temperature
         self._humidity = humidity
@@ -920,7 +924,7 @@ class _WeatherStation(EEP):
     def hemisphere(self):
         return self._hemisphere
 
-    def __init__(self, identifier, learn_button,
+    def __init__(self, identifier:int=1, learn_button:int=1,
         dawn_sensor=None, temperature=None, wind_speed=None, day_night=None, rain_indication=None,
         sun_west=None, sun_south=None, sun_east=None, hemisphere=None):
         self._dawn_sensor = dawn_sensor
@@ -965,7 +969,7 @@ class _TemperatureAndHumiditySensor(EEP):
         data = bytearray([0, 0, 0, 0])
         data[0] = 0x00
         data[1] = int((self.humidity / 100.0) * self.usr)
-        data[2] = int((self.current_temperature / (self.temp_max - self.temp_min)) * self.usr)
+        data[2] = int(((self.current_temperature - self.temp_min) / (self.temp_max - self.temp_min)) * self.usr)
         data[3] = (self.learn_button << 3)
         
         status = 0x00
@@ -984,7 +988,7 @@ class _TemperatureAndHumiditySensor(EEP):
     def learn_button(self):
         return self._learn_button
     
-    def __init__(self, temperature, humidity,learn_button):
+    def __init__(self, temperature:int=0, humidity:int=0, learn_button:int=1):
         self._temperature = temperature
         self._humidity = humidity
         self._learn_button = learn_button
@@ -1041,7 +1045,7 @@ class _TemperatureAndHumiditySensor2(EEP):
     def learn_button(self):
         return self._learn_button
 
-    def __init__(self, temperature, humidity,learn_button, temp_availability):
+    def __init__(self, temperature:int=0, humidity:int=0, learn_button:int=1, temp_availability:int=1):
         self._temperature = temperature
         self._humidity = humidity
         self._learn_button = learn_button
@@ -1101,7 +1105,7 @@ class _TemperatureAndHumiditySensor3(EEP):
     def telegram_type(self):
         return self._telegram_type
     
-    def __init__(self, temperature, humidity,learn_button,telegram_type):
+    def __init__(self, temperature:int=-20, humidity:int=0, learn_button:int=1, telegram_type:int=1):
         self._temperature = temperature
         self._humidity = humidity
         self._learn_button = learn_button
@@ -1392,7 +1396,7 @@ class _BrightnessTwilightSensor(EEP):
     def illumination(self):
         return self._illumination
 
-    def __init__(self, twilight, day_light, illumination):
+    def __init__(self, twilight:int=0, day_light:int=300, illumination:int=300):
         self._twilight = twilight
         self._day_light = day_light
         self._illumination = illumination
