@@ -2,6 +2,8 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.0.68 Added helper functions for AddressExpression
+
 ## 0.0.67 updates b2s so that other objects of the same address can be printed as well
 
 ## 0.0.66 Fixed EEP A5-04-02 and added default values for EEPs

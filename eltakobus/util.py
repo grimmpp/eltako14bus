@@ -6,7 +6,6 @@ def b2a(rawdata, separator=' '):
 
 def b2s(rawdata, separator='-'):
     # like binascii.b2a_hex, but directly to unicode for printing, and with nice spacing
-
     _rawdata = rawdata
     if isinstance(_rawdata, AddressExpression):
         _rawdata = _rawdata[0]
@@ -52,6 +51,16 @@ class AddressExpression(tuple):
         if self[1] is not None:
             raise ValueError("Address has disciminator %s, None expected" % self[1])
         return self[0]
+    
+    def is_local_address(self) -> bool:
+        return self[0][0:2] == b'\x00\x00'
+    
+    def add(self, address):
+        return AddressExpression((
+            (int.from_bytes(self[0], 'big') + int.from_bytes(address[0], 'big')).to_bytes(4, byteorder='big'),
+            self[1]
+        ))
+        
 
 class DefaultEnum(Enum):
 
