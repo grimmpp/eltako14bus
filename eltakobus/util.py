@@ -6,7 +6,11 @@ def b2a(rawdata, separator=' '):
 
 def b2s(rawdata, separator='-'):
     # like binascii.b2a_hex, but directly to unicode for printing, and with nice spacing
-    return b2a(rawdata, separator).upper()
+
+    if isinstance(rawdata, AddressExpression):
+        return b2a(rawdata[0], '-').upper()
+
+    return b2a(rawdata, '-').upper()
 
 def combine_hex(data):
     ''' Combine list of integer values to one big integer '''
@@ -14,6 +18,9 @@ def combine_hex(data):
     for i, value in enumerate(reversed(data)):
         output |= (value << i * 8)
     return output
+
+def adr_plus_adr(a1:bytes, a2:bytes) -> bytes:
+    return (int.from_bytes(a1, 'big') + int.from_bytes(a2, 'big')).to_bytes(4, byteorder='big')
 
 class AddressExpression(tuple):
     """An object around the 4-long byte strings passed around for addressing
