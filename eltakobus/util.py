@@ -7,10 +7,11 @@ def b2a(rawdata, separator=' '):
 def b2s(rawdata, separator='-'):
     # like binascii.b2a_hex, but directly to unicode for printing, and with nice spacing
 
-    if isinstance(rawdata, AddressExpression):
-        return b2a(rawdata[0], '-').upper()
-
-    return b2a(rawdata, '-').upper()
+    _rawdata = rawdata
+    if isinstance(_rawdata, AddressExpression):
+        _rawdata = _rawdata[0]
+    
+    return b2a(_rawdata, separator).upper()
 
 def combine_hex(data):
     ''' Combine list of integer values to one big integer '''
