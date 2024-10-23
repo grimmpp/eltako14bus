@@ -73,6 +73,10 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
 
         self.status_changed_handler = None
 
+    @property
+    def callback_func(self):
+        return self.__callback
+
     def create_base_id_info_message(self, base_id:AddressExpression, gw_type_id:int):
         data:bytes = b'\x8b\x98' + base_id[0] + gw_type_id.to_bytes(1, 'big') + b'\x00\x00\x00\x00'
         return ESP2Message(bytes(data))
@@ -82,6 +86,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
         self.status_changed_handler = handler
         self._fire_status_change_handler(self.is_active())
 
+
     def _fire_status_change_handler(self, connected:bool) -> None:
         try:
             if self.status_changed_handler:
@@ -89,22 +94,27 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
         except Exception as e:
             pass
 
+
     def stop(self):
         self._stop_flag.set()
 
+
     async def base_exchange(self, request:ESP2Message):
         self._send(request)
+
 
     def _send(self, request:ESP2Message):
         if self.suppress_echo:
             self._suppress.append((time.time(), request.serialize()))
         self.transmit.put((time.time(), request))
 
+
     def set_callback(self, callback):
         with self.__mutex:
             self.__callback = callback
             if callable is not None:
                 while not self.transmit.empty(): self.transmit.get()
+
 
     async def send_base_id_request(self):
         # is fam14
@@ -115,6 +125,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
         else:
             data = b'\xAB\x58\x00\x00\x00\x00\x00\x00\x00\x00\x00'
             await self.send(ESP2Message(bytes(data)))
+
 
     async def request_fam14_base_id(self):
         self.log.debug("Try to read base id of FAM14")
@@ -159,13 +170,16 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
             
         return False
 
+
     def is_active(self) -> bool:
         return not self._stop_flag.is_set() and self.is_serial_connected.is_set()
+
 
     def reconnect(self):
         self._stop_flag.set()
         self._stop_flag.wait()
         self.start()
+
 
     def run(self):
         self.log.info('Serial communication started')
