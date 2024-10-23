@@ -386,11 +386,6 @@ class FAM14(BusObject):
         mem_line = await self.read_mem_line(1)
         return int.from_bytes(mem_line[0:4], "big") 
 
-    # @classmethod
-    # async def get_fam14_base_id(serial_bus) -> str:
-    #     dis_msg = EltakoDiscoveryReply(255, 1, 127, b'\x07\xff\x19\x00', True)
-    #     fam14 = FAM14(dis_msg, serial_bus)
-    #     return await fam14.get_base_id()
 
 class DimmerStyle(BusObject):
     """Devices that work just the same as a FUD14. FSG14_1_10V appears to

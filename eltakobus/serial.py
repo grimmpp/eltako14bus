@@ -12,8 +12,9 @@ from eltakobus import locking
 
 from .bus import BusInterface
 from .error import ParseError, TimeoutError
-from .message import ESP2Message, EltakoMemoryRequest, EltakoMemoryResponse, prettify, EltakoTimeout, EltakoPoll, EltakoMessage
+from .message import ESP2Message, EltakoMemoryRequest, EltakoMemoryResponse, prettify, EltakoTimeout, EltakoDiscoveryRequest, EltakoDiscoveryReply
 from .util import AddressExpression, b2s
+from .device import FAM14
 
 class RS485SerialInterfaceV2(BusInterface, threading.Thread):
 
@@ -137,11 +138,16 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
 
             is_locked = (await locking.lock_bus(self)) == locking.LOCKED
             
+            # request memory entry containing base id
             response:EltakoMemoryResponse = await self.exchange(EltakoMemoryRequest(255, 1), EltakoMemoryResponse)
             base_id = AddressExpression((response.value[0:4],None))
 
             resp_msg = RS485SerialInterfaceV2.create_base_id_info_message(base_id, 0)
             __callback(resp_msg)
+
+            #TODO: report version
+            # resp_msg:EltakoDiscoveryReply = await self.exchange(EltakoDiscoveryRequest(255), EltakoDiscoveryReply)
+            # FAM14(resp_msg).version
 
         except Exception as e:
             self.log.error("Failed to load base_id from FAM14.")
