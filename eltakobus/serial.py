@@ -8,9 +8,12 @@ import serial
 
 import serial_asyncio
 
+from eltakobus import locking
+
 from .bus import BusInterface
 from .error import ParseError, TimeoutError
-from .message import ESP2Message, prettify, EltakoTimeout, EltakoPoll, EltakoMessage
+from .message import ESP2Message, EltakoMemoryRequest, EltakoMemoryResponse, prettify, EltakoTimeout, EltakoPoll, EltakoMessage
+from .util import AddressExpression, b2s
 
 class RS485SerialInterfaceV2(BusInterface, threading.Thread):
 
@@ -70,6 +73,11 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
 
         self.status_changed_handler = None
 
+    def create_base_id_info_message(self, base_id:AddressExpression, gw_type_id:int):
+        data:bytes = b'\x8b\x98' + base_id[0] + gw_type_id.to_bytes(1, 'big') + b'\x00\x00\x00\x00'
+        return ESP2Message(bytes(data))
+
+    
     def set_status_changed_handler(self, handler) -> None:
         self.status_changed_handler = handler
         self._fire_status_change_handler(self.is_active())
@@ -99,12 +107,43 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                 while not self.transmit.empty(): self.transmit.get()
 
     async def send_base_id_request(self):
-        data = b'\xAB\x58\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-        await self.send(ESP2Message(bytes(data)))
+        # is fam14
+        if self.suppress_echo:
+            await self.request_fam14_base_id()
+            
+        else:
+            data = b'\xAB\x58\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+            await self.send(ESP2Message(bytes(data)))
+
+    async def request_fam14_base_id(self):
+        self.log.debug("Try to read base id of FAM14")
+        is_locked = False
+        __callback = self.__callback
+        try:
+            self.set_callback( None )
+
+            is_locked = (await locking.lock_bus(self)) == locking.LOCKED
+            
+            response:EltakoMemoryResponse = await self.exchange(EltakoMemoryRequest(255, 1), EltakoMemoryResponse)
+            base_id = AddressExpression((response.value[0:4],None))
+
+            resp_msg = self.create_base_id_info_message(base_id, 0)
+            __callback(resp_msg)
+
+        except Exception as e:
+            self.log.error("Failed to load base_id from FAM14.")
+            raise e
+        finally:
+            if is_locked:
+                resp = await locking.unlock_bus(self)
+            self.set_callback( __callback )
+
 
     async def send_version_request(self):
         data = b'\xAB\x4B\x00\x00\x00\x00\x00\x00\x00\x00\x00'
         await self.send(ESP2Message(bytes(data)))
+
+    
 
     def echotest(self):
         echotest = b'\xff\x00\xff' * 5 # long enough that it can not be contained in any EnOcean message
