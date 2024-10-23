@@ -109,7 +109,8 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
     async def send_base_id_request(self):
         # is fam14
         if self.suppress_echo:
-            await self.request_fam14_base_id()
+            # start in thread because of blocking sleep function
+            await asyncio.to_thread(asyncio.run, self.request_fam14_base_id())
             
         else:
             data = b'\xAB\x58\x00\x00\x00\x00\x00\x00\x00\x00\x00'
@@ -265,7 +266,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
 
             while self.transmit.unfinished_tasks > 0:
                 # required to not utilize the whole CPU power
-                time.sleep(.00001) 
+                await asyncio.sleep(.00001) 
 
             # receive response
             while True:
@@ -288,7 +289,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                     break
 
                 # required to not utilize the whole CPU power
-                time.sleep(.00001)
+                await asyncio.sleep(.00001)
 
 
 
