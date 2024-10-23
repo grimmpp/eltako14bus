@@ -3,6 +3,7 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## 0.0.71 Added functions for discovery of devices
+* Added functions for discovery of devices
 * fixed blocking sleep function
 
 ## 0.0.68 Added helper functions for AddressExpression
