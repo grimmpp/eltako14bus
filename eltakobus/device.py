@@ -1118,7 +1118,7 @@ async def request_memory_of_all_devices(bus:RS485SerialInterfaceV2):
     is_locked = False
     __callback = bus.__callback
     try:
-        bus.set_callback( None )
+        bus.__callback = None
 
         is_locked = (await locking.lock_bus(bus)) == locking.LOCKED
             
