@@ -1115,8 +1115,6 @@ def get_bus_object_by_discovery_message(msg: EltakoDiscoveryReply, bus:RS485Seri
 
 
 async def request_memory_of_all_devices(bus:RS485SerialInterfaceV2):
-    log.debug("Try to read memory of all bus devices")
-        
     is_locked = False
     __callback = bus.__callback
     try:
