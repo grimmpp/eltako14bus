@@ -77,7 +77,8 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
     def callback_func(self):
         return self.__callback
 
-    def create_base_id_info_message(self, base_id:AddressExpression, gw_type_id:int):
+    @classmethod
+    def create_base_id_info_message(cls, base_id:AddressExpression, gw_type_id:int):
         data:bytes = b'\x8b\x98' + base_id[0] + gw_type_id.to_bytes(1, 'big') + b'\x00\x00\x00\x00'
         return ESP2Message(bytes(data))
 
@@ -139,7 +140,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
             response:EltakoMemoryResponse = await self.exchange(EltakoMemoryRequest(255, 1), EltakoMemoryResponse)
             base_id = AddressExpression((response.value[0:4],None))
 
-            resp_msg = self.create_base_id_info_message(base_id, 0)
+            resp_msg = RS485SerialInterfaceV2.create_base_id_info_message(base_id, 0)
             __callback(resp_msg)
 
         except Exception as e:
