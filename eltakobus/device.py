@@ -2,8 +2,12 @@ from collections import defaultdict, namedtuple
 from enum import IntEnum
 import asyncio
 import binascii
+from logging import Logger
 import random
 import yaml
+
+from eltakobus import locking
+from eltakobus.serial import RS485SerialInterfaceV2
 
 from .util import b2a, b2s, AddressExpression
 from .message import *
@@ -195,7 +199,6 @@ class SensorInfo():
         self.in_func_group = in_func_group
         self.memory_line = memory_line
     
-
 class BusObject:
     sensor_address_range = None
     discovery_names = []
@@ -383,6 +386,11 @@ class FAM14(BusObject):
         mem_line = await self.read_mem_line(1)
         return int.from_bytes(mem_line[0:4], "big") 
 
+    # @classmethod
+    # async def get_fam14_base_id(serial_bus) -> str:
+    #     dis_msg = EltakoDiscoveryReply(255, 1, 127, b'\x07\xff\x19\x00', True)
+    #     fam14 = FAM14(dis_msg, serial_bus)
+    #     return await fam14.get_base_id()
 
 class DimmerStyle(BusObject):
     """Devices that work just the same as a FUD14. FSG14_1_10V appears to
@@ -1095,12 +1103,53 @@ async def create_busobject(bus, id):
     
     assert id == response.reported_address, "Queried for ID %s, received %s" % (id, prettify(response))
 
-    for o in sorted_known_objects:
-        if response.model[0:2] in o.discovery_names and (o.size is None or o.size == response.reported_size):
-            return o(response, bus=bus)
-    else:
-        return BusObject(response, bus=bus)
+    return get_bus_object_by_discovery_message(response, bus)
 
+
+def get_bus_object_by_discovery_message(msg: EltakoDiscoveryReply, bus:RS485SerialInterfaceV2=None):
+    for o in sorted_known_objects:
+        if msg.model[0:2] in o.discovery_names and (o.size is None or o.size == msg.reported_size):
+            return o(msg, bus=bus)
+    else:
+        return BusObject(msg, bus=bus)
+
+
+async def request_memory_of_all_devices(bus:RS485SerialInterfaceV2):
+    log.debug("Try to read memory of all bus devices")
+        
+    is_locked = False
+    __callback = bus.__callback
+    try:
+        bus.set_callback( None )
+
+        is_locked = (await locking.lock_bus(bus)) == locking.LOCKED
+            
+        bus.send_base_id_request()
+
+        # iterate through devices
+        for id in range(1, 256):
+            dev_response:EltakoDiscoveryReply = await bus.exchange(EltakoDiscoveryRequest(address=id), EltakoDiscoveryReply, retries=3)
+            if dev_response == None:
+                break
+
+            assert id == dev_response.reported_address, "Queried for ID %s, received %s" % (id, prettify(dev_response))
+
+            __callback(dev_response)
+            asyncio.sleep(.02)
+
+            # iterate through memory lines
+            for line in range(0, dev_response.memory_size):
+                # exit if gateway is about to be deleted           
+                mem_response:EltakoMemoryResponse = await bus.exchange(EltakoMemoryRequest(dev_response.reported_address, line), EltakoMemoryResponse, retries=3)
+                __callback(mem_response)
+                asyncio.sleep(.02)
+
+    except Exception as e:
+        raise e
+    finally:
+        if is_locked:
+            resp = await locking.unlock_bus(bus)
+        bus.set_callback( __callback ) 
     
 
 class MemoryFile(defaultdict):
