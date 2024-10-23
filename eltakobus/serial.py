@@ -13,8 +13,7 @@ from eltakobus import locking
 from .bus import BusInterface
 from .error import ParseError, TimeoutError
 from .message import ESP2Message, EltakoMemoryRequest, EltakoMemoryResponse, prettify, EltakoTimeout, EltakoDiscoveryRequest, EltakoDiscoveryReply
-from .util import AddressExpression, b2s
-from .device import FAM14
+from .util import AddressExpression
 
 class RS485SerialInterfaceV2(BusInterface, threading.Thread):
 
@@ -142,7 +141,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
             response:EltakoMemoryResponse = await self.exchange(EltakoMemoryRequest(255, 1), EltakoMemoryResponse)
             base_id = AddressExpression((response.value[0:4],None))
 
-            resp_msg = RS485SerialInterfaceV2.create_base_id_info_message(base_id, 0)
+            resp_msg = self.create_base_id_info_message(base_id, 0)
             __callback(resp_msg)
 
             #TODO: report version
