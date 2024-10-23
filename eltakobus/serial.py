@@ -266,7 +266,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
 
             while self.transmit.unfinished_tasks > 0:
                 # required to not utilize the whole CPU power
-                time.sleep(.00001) 
+                await asyncio.sleep(.00001) 
 
             # receive response
             while True:
@@ -289,7 +289,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                     break
 
                 # required to not utilize the whole CPU power
-                time.sleep(.00001)
+                await asyncio.sleep(.00001)
 
 
 
