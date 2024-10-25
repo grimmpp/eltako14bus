@@ -250,11 +250,15 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
             except (serial.SerialException, IOError) as e:
                 self._fire_status_change_handler(connected=False)
                 self.is_serial_connected.clear()
-                self.log.error(e)
+                self.log.exception(e)
                 self.__serial = None
                 if self._auto_reconnect:
                     self.log.info("Serial communication crashed. Wait %s seconds for reconnection.", self.__recon_time)
                     time.sleep(self.__recon_time)
+                else:
+                    self._fire_status_change_handler(connected=False)
+                    self._stop_flag.set()
+                    raise e
 
         self._fire_status_change_handler(connected=False)
         if self.__serial is not None:
