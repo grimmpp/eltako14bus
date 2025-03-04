@@ -127,6 +127,11 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
             data = b'\xAB\x58\x00\x00\x00\x00\x00\x00\x00\x00\x00'
             await self.send(ESP2Message(bytes(data)))
 
+    async def send_repeater_mode_request(self):
+        self.log.debug("function send_repeater_mode_request not supported by esp2.")
+
+    async def send_repeater_mode(self, mode:int):
+        self.log.debug("function send_repeater_mode not supported by esp2.")
 
     async def request_fam14_base_id(self):
         self.log.debug("Try to read base id of FAM14")
