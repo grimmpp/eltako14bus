@@ -2,6 +2,8 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.0.76 Print parse error of broken packages
+
 ## 0.0.75 repeater mode functions added
 
 ## 0.0.74 Exception handling in serial thread extended
