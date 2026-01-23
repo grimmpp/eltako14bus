@@ -771,7 +771,7 @@ class F4SR14_LED(FSR14):
 
 class FSB14(BusObject, HasProgrammableRPS):
     size = 2
-    discovery_names = [ bytes((0x04, 0x06)) ]
+    discovery_names = [ bytes((0x04, 0x06)), bytes((0x05, 0x06)) ]
     sensor_address_range = range(17, 127)
     range_func_group_1 = range(16,17)
     range_func_group_2 = range(17,127)
