@@ -235,18 +235,24 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                     self._buffer.extend( self.__serial.read_all() )
 
                     # process received messages from bus
-                    buffer_error = False
+                    error_buffer = []
+                    error_msg = ""
                     while len(self._buffer) >= 14:
                         try:
                             parsed_msg = prettify( ESP2Message.parse(bytes(self._buffer[:14])) )
                             # self.log.debug("Received Message: %s", parsed_msg)
+                            
                         except ParseError as e:
-                            if not buffer_error:
-                                self._buffer = self._buffer[1:]
-                                # self.log.exception(f"ParseError for: {b2s(bytes(self._buffer[:14]))}")
-                                self.log.error(f"{type(e).__name__}: {e} for: {b2s(bytes(self._buffer[:14]))}")
-                                buffer_error = True
+                            error_buffer.append(self._buffer[0])
+                            error_msg = f"{type(e).__name__}: {e}"
+                            self._buffer = self._buffer[1:]
+                            
                         else:
+                            # log out broken messages
+                            if len(error_buffer) > 0:
+                                self.log.error(f"{error_msg} for: {b2s(bytes(error_buffer))}")
+                                error_buffer = []
+
                             self._buffer = self._buffer[14:]
                             if self.__callback is None:
                                 self.receive.put(parsed_msg)
