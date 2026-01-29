@@ -457,6 +457,73 @@ class _AirQualitySensor(EEP):
 class A5_09_0C(_AirQualitySensor):
     """Air quality sensor"""
 
+class _CO2TemperatureHumiditySensor(EEP):
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+
+        # Data_byte3 = Humidity 0..100% (0..200)
+        humidity = (msg.data[0] / 200.0) * 100.0
+
+        # Data_byte2 = CO2 value 0..2550ppm (0..255)
+        co2 = msg.data[1] * 10
+
+        # Data_byte1 = Temperature 0..51°C (0..255)
+        temperature = (msg.data[2] / 255.0) * 51.0
+
+        learn_button = (msg.data[3] & 0x08) >> 3
+
+        return cls(humidity=humidity, co2=co2, temperature=temperature, learn_button=learn_button)
+
+    def encode_message(self, address):
+        data = bytearray([0, 0, 0, 0])
+
+        hum_val = int((self.humidity / 100.0) * 200.0)
+        data[0] = min(max(hum_val, 0), 200)
+
+        co2_val = int(self.co2 / 10.0)
+        data[1] = min(max(co2_val, 0), 255)
+
+        temp_val = int((self.temperature / 51.0) * 255.0)
+        data[2] = min(max(temp_val, 0), 255)
+
+        data[3] = (self.learn_button << 3)
+
+        status = 0x00
+
+        return Regular4BSMessage(address, status, data, True)
+
+    def __init__(self, humidity:float=0, co2:int=0, temperature:float=0, learn_button:int=1):
+        self._humidity = humidity
+        self._co2 = co2
+        self._temperature = temperature
+        self._learn_button = learn_button
+
+    @property
+    def humidity(self):
+        return self._humidity
+
+    @property
+    def co2(self):
+        return self._co2
+
+    @property
+    def temperature(self):
+        return self._temperature
+    
+    @property
+    def current_temperature(self):
+        return self._temperature
+
+    @property
+    def learn_button(self):
+        return self._learn_button
+    
+class A5_09_04(_CO2TemperatureHumiditySensor):
+    """CO2, Temperature and Humidity Sensor"""
+
 # ======================================
 # MARK: - Central Command
 # ======================================
