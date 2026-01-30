@@ -686,69 +686,60 @@ class A5_10_03(_TempControl):
     """Thermostat - current and desired temperature"""
 
 class _HeatingCooling(EEP):
-    min_temp:float = 0
-    max_temp:float = 40
+    min_des_temp:float = 12
+    max_des_temp:float = 28
     usr:float = 255.0 # unscaled range 
 
-    class ControllerPriority(DefaultEnum):
-        ## TT = Target Temperature
-        ## CT = Current Temperature
-        AUTO = (1, 0x0E, 'Auto')                      # 00-TT-00-0E   no Priority (thermostat and controller have same prio)
-        HOME_AUTOMATION = (2, 0x08, 'Home Assistant') # 00-TT-00-08   only values from softare controller, registered in actuator, are considered 
-        THERMOSTAT = (3, 0x0E, 'Thermostat')          # 00-00-00-0E   only values from thermostat, registered in actuator, are considered (disables softeare controller)
-        LIMIT = (4, 0x0A, 'Limited Thermostat Range (±3°K)') # 00-TT-00-0A   Controller defines target temperature and thermostat can change it in a range of -3 to + 3 degree
-        ACTUATOR_ACK = (5, 0x0F, 'Actuator Response') # 00-TT-CT-0F
-
-        # DB0.1 = 1: no Prio [0E]
-        # DB0.1 = 0: Prio   [0A,08]
-        # DB0.2 = 1: limits thermostat range to +/-3°K [0A]
-
-    class HeaterMode(Enum):
-        NORMAL = 0x70                       # normal mode
-        STAND_BY_2_DEGREES = 0x30           # -2°K degree off-set mode              
-        NIGHT_SET_BACK_4_DEGREES = 0x50     # night set back (-4°K)
-        OFF = 0x10                          # Off
-        UNKNOWN = 0x00
+    class SlideSwitch(Enum):
+        OFF_NIGHT = 0
+        ON_DAY = 1
 
     @classmethod
     def decode_message(cls, msg):
-        if msg.org == 0x07:
-
-            priority = cls.ControllerPriority.find_by_code(msg.data[3])
-            # reversed range (from 40° to 0°)
-            current_temp = ((cls.usr - msg.data[2]) / cls.usr) * cls.max_temp
-            target_temp = (msg.data[1] / cls.usr) * cls.max_temp
-            
-            try:
-                mode = cls.HeaterMode(msg.data[0])
-                if mode.value == 0 and target_temp == 0:
-                    mode = cls.HeaterMode.OFF
-            except:
-                mode = cls.HeaterMode.UNKNOWN
-
-            return cls(mode, target_temp, current_temp, priority)
-        else:
+        if msg.org != 0x07:
             raise WrongOrgError
+    
+        # Enocean standard learn button
+        learn_button = (msg.data[3] & 0x08) >> 3
+
+        # Slide switch Day / Night in Bit 7 of DB0 per enocean standard
+        if (msg.data[3] & 0x80) == 0x80:
+            switch = cls.SlideSwitch.ON_DAY
+        else:
+            switch = cls.SlideSwitch.OFF_NIGHT
+
+        reserved_db0 = msg.data[3] & 0x77
+
+        # Reversed range (from 40° to 0° as per enocean standard)
+        current_temp = ((255.0 - msg.data[2]) / 255.0) * 40.0
+
+        # Setpoint, linear n=0...255, range is manufacturer specific
+        # 8..40°C for Eltako FUTH65D, FUTH55D
+        # 12..28°C for Eltako FTR86B, FTR65DSB, FTR55DSB, FTR65HB, FTRF65HB, FTR55HB, FTR65SB, FTRF65SB, FTR55SB, FTR86B
+        target_temp = (msg.data[1] / cls.usr) * (cls.max_des_temp - cls.min_des_temp) + cls.min_des_temp
+
+        # Manufacturer specific Byte 3 (DB3)
+        # Eltako FTR65HS, FTAF65 use it for night reduction 0-5°K in 1° steps
+        reserved_db3 = msg.data[0]
+
+        return cls(learn_button=learn_button, switch=switch, target_temp=target_temp, current_temp=current_temp, reserved_db0=reserved_db0, reserved_db3=reserved_db3)
 
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
 
-        data[3] = self.priority.code
+        data[3] = data[3] | (self.learn_button << 3)
+        data[3] = data[3] | (self.switch.value << 7)
+        data[3] = data[3] | self.reserved_db0
 
-        # reversed range (from 40° to 0°)
-        data[2] = int((self.max_temp - self.current_temperature) / self.max_temp * self.usr)
+        data[2] = max(0, min(255, int((40.0 - self.current_temperature) / 40.0 * 255.0)))
 
-        data[1] = int(self.target_temperature / self.max_temp * self.usr)
+        data[1] = max(0, min(255, int((self.target_temperature - self.min_des_temp) / (self.max_des_temp - self.min_des_temp) * self.usr)))
         
-        data[0] = self.mode.value
-        
+        data[0] = self.reserved_db3
+
         status = 0x80
 
         return Regular4BSMessage(address, status, data, True)
-
-    @property
-    def mode(self) -> HeaterMode:
-        return self._mode
     
     @property
     def target_temperature(self):
@@ -759,14 +750,30 @@ class _HeatingCooling(EEP):
         return self._current_temp
     
     @property
-    def priority(self) -> ControllerPriority:
-        return self._priority
+    def learn_button(self):
+        return self._learn_button
+    
+    @property
+    def switch(self):
+        return self._switch
+    
+    @property
+    def reserved_db0(self):
+        return self._reserved_db0
+    
+    @property
+    def reserved_db3(self):
+        return self._reserved_db3
 
-    def __init__(self, mode:HeaterMode=HeaterMode.NORMAL, target_temp:float=40, current_temp:float=min_temp, priority: ControllerPriority=ControllerPriority.AUTO):
-        self._mode  = mode
+    def __init__(self, learn_button:int=1, target_temp:float=40, min_des_temp:float=min_des_temp, max_des_temp:float=max_des_temp, current_temp:float=0, reserved_db0:int=0, reserved_db3:int=0, switch:SlideSwitch=SlideSwitch.ON_DAY):
+        self._learn_button = learn_button
         self._target_temp = target_temp
         self._current_temp = current_temp
-        self._priority = priority
+        self._reserved_db0 = reserved_db0
+        self._reserved_db3 = reserved_db3
+        self._switch = switch
+        self.min_des_temp = min_des_temp
+        self.max_des_temp = max_des_temp
 
 
 class A5_10_06(_HeatingCooling):
