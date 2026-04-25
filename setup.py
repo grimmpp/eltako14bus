@@ -13,12 +13,12 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="eltako14bus",
-    version="0.0.79",
+    version="0.0.80",
     author="chrysn, grimmpp",
     author_email="chrysn@fsfe.org, grimmpp14@gmail.com",
     description="Library for participating in the Eltako Series 14 RS485 bus",
     url="https://github.com/grimmpp/eltako14bus",
-    packages=setuptools.find_packages(),
+    packages=setuptools.find_packages(include=["eltakobus", "eltakobus.*"]),
     extras_require=extras_require,
     # Not that there'd be tests, but at least it fetches the right dependencies and syntax checks everything
     tests_require=list(set(sum(extras_require.values(), []))),
