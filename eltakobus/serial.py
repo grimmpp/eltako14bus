@@ -39,13 +39,15 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                  baud_rate=57600, 
                  reconnection_timeout:float=10, 
                  delay_message:float=0.01, 
-                 auto_reconnect=True):
+                 auto_reconnect=True,
+                 disabled_echotest=False):
         
         super(RS485SerialInterfaceV2, self).__init__()
         self._filename = filename
         self._baud_rate = baud_rate
         self.delay_message = delay_message
         self._auto_reconnect = auto_reconnect
+        self.disabled_echotest = disabled_echotest
 
         self.log = log or logging.getLogger('eltakobus.serial')
 
@@ -203,12 +205,15 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                         self.__serial = serial.serial_for_url(self._filename, self._baud_rate, timeout=0.1, write_timeout=0.1)
                         self.log.info("Established serial connection to %s - baud rate: %d", self._filename, self._baud_rate)
                         
-                        self.log.debug("Performing echo detection")
-                        self.suppress_echo = self.echotest()
-                        if self.suppress_echo:
-                            self.log.debug("Echo detected on the line, enabling suppression")
+                        if not self.disabled_echotest:
+                            self.log.debug("Performing echo detection")
+                            self.suppress_echo = self.echotest()
+                            if self.suppress_echo:
+                                self.log.debug("Echo detected on the line, enabling suppression")
+                            else:
+                                self.log.debug("No echo detected on the line")
                         else:
-                            self.log.debug("No echo detected on the line")
+                            self.log.debug("Echo detection disabled.")
                         
                         self.is_serial_connected.set()
                         self._fire_status_change_handler(connected=True)

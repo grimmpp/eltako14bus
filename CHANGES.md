@@ -2,6 +2,8 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.0.81 Echo Tests are made optional for serial connection.
+
 ## 0.0.80 New EEP added A5_09_04 CO2TemperatureHumiditySensor
 
 ## 0.0.79 Broken message handling fixed
