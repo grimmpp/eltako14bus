@@ -2,6 +2,8 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## Bug fix in initializing EEP A5-10-06 HeatingCooling
+
 ## 0.0.81 Echo Tests are made optional for serial connection.
 
 ## 0.0.80 New EEP added A5_09_04 CO2TemperatureHumiditySensor

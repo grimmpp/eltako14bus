@@ -815,6 +815,8 @@ class _HeatingCooling(EEP):
 
     @property
     def mode(self) -> HeaterMode:
+        if self._mode is None or self._mode == 0:
+            return self.HeaterMode.NORMAL
         return self._mode
     
     @property
@@ -827,6 +829,8 @@ class _HeatingCooling(EEP):
     
     @property
     def priority(self) -> ControllerPriority:
+        if self._priority is None or self._priority == 0:
+            return self.ControllerPriority.AUTO
         return self._priority
 
     def __init__(self, mode:HeaterMode=HeaterMode.NORMAL, target_temp:float=40, current_temp:float=min_temp, priority: ControllerPriority=ControllerPriority.AUTO):
