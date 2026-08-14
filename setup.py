@@ -4,6 +4,7 @@ import setuptools
 extras_require = {
     'serial': ['pyserial_asyncio', 'pyserial >= 3.4'],
     'coap': ['aiocoap == 0.4a1'],
+    'esp3': ['enocean >= 0.60.1', 'zeroconf'],
     # Not usable yet as it's not exported via an entry point
     'eltakotool': ['pyyaml', 'pyxdg'],
 }

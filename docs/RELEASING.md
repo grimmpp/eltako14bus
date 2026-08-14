@@ -58,9 +58,13 @@ python -m compileall -q eltakobus tests eltakotool.py
 git diff --check
 ```
 
-The repository's GitHub Actions release workflow currently installs
-`requirements.txt`, runs `pytest tests`, builds the package, and publishes it
-to PyPI. Run the same checks locally before creating a release.
+The repository has two GitHub Actions workflows. `ci.yml` runs on pushes and
+pull requests on Python 3.10 through 3.14. `release.yml` runs only after a
+GitHub Release is published, repeats the tests, compiles the sources, builds
+the wheel and source archive, validates them with `twine check`, verifies a
+wheel installation, and only then publishes to PyPI. Both workflows install
+the package extras directly, so CI exercises the same dependency declaration
+used by consumers instead of the legacy `requirements.txt` file.
 
 Build and inspect the distribution artifacts locally:
 

@@ -11,6 +11,8 @@ from .error import *
 from .message import *
 from .bus import *
 from .serial import *
+from .esp2_gateway import *
+from .esp3 import *
 from .coap import *
 from .device import *
 from . import locking

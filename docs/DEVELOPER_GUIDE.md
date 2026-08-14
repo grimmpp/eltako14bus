@@ -154,6 +154,58 @@ The same measurement is available in Python as
 list of result dictionaries. Delay requirements depend on the gateway,
 adapter, bus traffic, and connected devices.
 
+### Connecting through an ESP2 gateway adapter
+
+The library provides `ESP2TCPSerialInterface` for gateways that expose the
+ESP2 stream over TCP, as used by the
+[esp2_gateway_adapter project](https://github.com/grimmpp/esp2_gateway_adapter):
+
+```python
+import asyncio
+
+from eltakobus.esp2_gateway import ESP2TCPSerialInterface
+from eltakobus.message import EltakoDiscoveryRequest, EltakoDiscoveryReply
+
+
+async def main():
+    bus = ESP2TCPSerialInterface("192.168.1.50", 5000, auto_reconnect=True)
+    bus.start()
+    try:
+        await asyncio.to_thread(bus.is_serial_connected.wait)
+        print(await bus.exchange(EltakoDiscoveryRequest(1), EltakoDiscoveryReply))
+    finally:
+        bus.stop()
+        await asyncio.to_thread(bus.join)
+
+
+asyncio.run(main())
+```
+
+It handles fragmented/coalesced 14-byte ESP2 frames, unsolicited frames via
+`bus.received` or `set_callback()`, clean shutdown, and automatic reconnect.
+The `socket_factory` argument lets unit tests provide a socket-like double.
+The ESP3/EnOcean dependency is intentionally not imported by the core package;
+an ESP3 radio can be used when the external project provides the ESP2 endpoint.
+
+For applications that directly use an ESP3 communicator, install the optional
+dependency with `python -m pip install -e '.[esp3]'` and use
+`ESP3MessageAdapter`. It adds the ESP3 RADIO_ERP1 Security-Level byte and
+isolates conversion errors:
+
+```python
+from eltakobus.esp3 import ESP3MessageAdapter
+
+adapter = ESP3MessageAdapter()
+
+# In the ESP3 receive callback. Invalid packets return None and are logged.
+converted = adapter.handle_packet(packet, callback, translate=True)
+```
+
+Do not let a conversion exception escape from an ESP3 receive worker. Unknown
+return codes, `WRONG_PARAM`, short payloads, unsupported RORGs, and callback
+failures are logged and ignored so that subsequent radio telegrams can still
+be processed.
+
 The older `RS485SerialInterface` remains in the source tree for compatibility.
 New integrations should use V2 unless they specifically need the legacy
 asyncio protocol lifecycle.

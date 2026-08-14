@@ -6,6 +6,17 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
+- Added pull-request/push CI across Python 3.10–3.14 with unit tests,
+  compilation checks, distribution builds, and `twine` metadata validation.
+- Hardened the release workflow by testing declared package extras, validating
+  build artifacts, and checking wheel installation before PyPI publication.
+- Added `ESP2TCPSerialInterface` (also available as the upstream-compatible
+  `ESP2TCP2SerialCommunicator`) for ESP2-over-TCP gateway adapters, including
+  framed telegram parsing, asynchronous exchanges, callbacks, clean stop,
+  and automatic reconnect.
+- Added optional `ESP3MessageAdapter` support (`pip install .[esp3]`) with
+  standards-compliant seven-byte RADIO_ERP1 optional data, defensive response
+  conversion, and logging/ignoring of malformed ESP3 packets.
 - Added structured metadata for all registered EEP profiles.
 - Added `EEPMetadata` and `EEPFieldMetadata` with names, descriptions, ORG
   identifiers, units, logical value ranges, data types, and enum values.
