@@ -73,6 +73,10 @@ and to read and write their configuration (eg. in a relay, setting which buttons
 License
 -------
 
-This was developed by Christian Amsüss <c.amsuess@energyharvesting.at> and Energy Harvesting Solutions 2016-2020.
+Originally developed by Christian Amsüss <c.amsuess@energyharvesting.at> and
+Energy Harvesting Solutions (2016–2020). Further developed and maintained by
+Philipp Grimm and contributors.
 
-It is published under the terms of GNU LGPL version 3 or later.
+The library is published under the terms of the GNU Lesser General Public
+License version 3 or later. See [`LICENSE`](LICENSE). The accompanying GPLv3
+text required by the LGPL is preserved in [`LICENSE-GPL-3.0`](LICENSE-GPL-3.0).

@@ -19,6 +19,7 @@ setuptools.setup(
     author_email="chrysn@fsfe.org, grimmpp14@gmail.com",
     description="Library for participating in the Eltako Series 14 RS485 bus",
     url="https://github.com/grimmpp/eltako14bus",
+    license="LGPL-3.0-or-later",
     # Tests and their hardware fixtures belong in the source repository, not
     # in the installable library distribution.
     packages=setuptools.find_packages(include=["eltakobus", "eltakobus.*"]),

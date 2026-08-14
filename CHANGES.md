@@ -6,6 +6,9 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
+- Corrected the project licensing to the original LGPLv3-or-later terms,
+  preserved the accompanying GPLv3 text required by LGPLv3, and clarified
+  original and current author attribution.
 - Added pull-request/push CI across Python 3.10–3.14 with unit tests,
   compilation checks, distribution builds, and `twine` metadata validation.
 - Hardened the release workflow by testing declared package extras, validating
