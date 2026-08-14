@@ -36,6 +36,9 @@ Eltako-specific sender telegrams, and [compatibility tests](docs/HOME_ASSISTANT_
 protect the public API used by external applications without adding a dependency
 on Home Assistant.
 
+The complete [EEP reference](docs/EEP_REFERENCE.md) lists all implemented
+profiles, organizations, fields, units, and value ranges.
+
 Quick start
 -----------
 
