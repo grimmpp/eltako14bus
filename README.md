@@ -21,6 +21,30 @@ do various raw interactions with the bus
 as well as reading and writing the bus participants' memory
 (including verification and annotation of the memory contents).
 
+Developer documentation
+-----------------------
+
+The [developer guide](docs/DEVELOPER_GUIDE.md) covers installation, serial and
+CoAP transports, asynchronous bus access, discovery, device and EEP APIs,
+locking, caching, the command-line tool, offline testing, and extension points.
+The [release guide](docs/RELEASING.md) documents version selection, local
+verification, tagging, GitHub Releases, and PyPI publication.
+
+Quick start
+-----------
+
+Install the serial transport and start the included tool with:
+
+```sh
+python3 -m pip install -e '.[serial,eltakotool]'
+python eltakotool.py --eltakobus /dev/ttyUSB0 enumerate
+```
+
+The library is asynchronous. A minimal application creates an
+`RS485SerialInterfaceV2`, starts it, awaits `bus.exchange(...)`, and calls
+`bus.stop()` during shutdown. See the developer guide for a complete example
+and the required baud-rate settings for common gateways.
+
 Protocol description
 --------------------
 

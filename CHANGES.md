@@ -2,6 +2,23 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.0.83
+
+### Added
+
+- Added structured metadata for all registered EEP profiles.
+- Added `EEPMetadata` and `EEPFieldMetadata` with names, descriptions, ORG
+  identifiers, units, logical value ranges, data types, and enum values.
+- Added `EEP.get_metadata()` and JSON-friendly `EEPMetadata.as_dict()`.
+- Added developer documentation for using, testing, and extending the library.
+
+### Compatibility
+
+- Existing EEP constructors, encoders, decoders, and `EEP.find()` behavior are
+  unchanged.
+- Metadata containers use immutable standard-library named tuples and add no
+  runtime dependency.
+
 ## Bug fix in initializing EEP A5-10-06 HeatingCooling
 
 ## 0.0.81 Echo Tests are made optional for serial connection.
@@ -137,4 +154,4 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 - Refactoring and introduction of FGW14 communication
 
 ## 0.0.9
-- Transferred from [GitLab eltakobus](https://gitlab.com/chrysn/eltakobus) library project to GitHub 
+- Transferred from [GitLab eltakobus](https://gitlab.com/chrysn/eltakobus) library project to GitHub

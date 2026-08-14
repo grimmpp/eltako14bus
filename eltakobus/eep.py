@@ -1,3 +1,4 @@
+from collections import namedtuple
 from enum import Enum
 
 from eltakobus.util import DefaultEnum
@@ -5,8 +6,75 @@ from .error import NotImplementedError, WrongOrgError
 from .message import RPSMessage, Regular1BSMessage, Regular4BSMessage
 import re
 
+
+class EEPFieldMetadata(namedtuple(
+        "EEPFieldMetadataBase",
+        "name description unit value_range values data_type")):
+    """Metadata describing one decoded/encoded EEP value.
+
+    ``value_range`` describes the physical or logical value exposed by the
+    Python property, not the raw byte range on the wire. ``values`` is useful
+    for enumerations and bit fields. The metadata is descriptive; encoding
+    and decoding continue to be implemented by the EEP classes themselves.
+    """
+
+    __slots__ = ()
+
+    def __new__(cls, name, description="", unit=None, value_range=None,
+                values=None, data_type="number"):
+        return super(EEPFieldMetadata, cls).__new__(
+            cls, name, description, unit, value_range, values, data_type)
+
+    def as_dict(self) -> dict:
+        result = {
+            "name": self.name,
+            "description": self.description,
+            "unit": self.unit,
+            "value_range": self.value_range,
+            "values": dict(self.values) if self.values is not None else None,
+            "data_type": self.data_type,
+        }
+        return result
+
+
+class EEPMetadata(namedtuple(
+        "EEPMetadataBase", "eep name description org fields")):
+    """Human- and machine-readable description of an EEP profile."""
+
+    __slots__ = ()
+
+    def __new__(cls, eep, name, description, org, fields=()):
+        return super(EEPMetadata, cls).__new__(
+            cls, eep, name, description, org, fields)
+
+    def with_eep(self, eep):
+        return self._replace(eep=eep)
+
+    def field(self, name: str) -> EEPFieldMetadata:
+        """Return metadata for *name* or raise ``KeyError``."""
+        for field in self.fields:
+            if field.name == name:
+                return field
+        raise KeyError(name)
+
+    def as_dict(self) -> dict:
+        """Return a JSON-friendly representation of this metadata."""
+        return {
+            "eep": self.eep,
+            "name": self.name,
+            "description": self.description,
+            "org": self.org,
+            "fields": [field.as_dict() for field in self.fields],
+        }
+
 class EEP:
     __sublasses_by_string = {}
+    metadata = EEPMetadata(
+        eep="",
+        name="Unknown EEP",
+        description="No metadata has been declared for this profile.",
+        org=None,
+    )
 
     @classmethod
     def decode_message(cls, msg):
@@ -21,7 +89,21 @@ class EEP:
         
         if re.match("^([0-9a-zA-Z]{2})_([0-9a-zA-Z]{2})_([0-9a-zA-Z]{2})$", cls.__name__):
             cls.eep_string = cls.__name__.replace("_", "-")
+            # Copy inherited metadata onto the concrete profile so callers
+            # can use either ``Profile.metadata`` or ``Profile.get_metadata``.
+            cls.metadata = cls.metadata.with_eep(cls.eep_string)
             cls.__sublasses_by_string[cls.eep_string] = cls
+
+    @classmethod
+    def get_metadata(cls) -> EEPMetadata:
+        """Return structured metadata for this EEP class.
+
+        Metadata is available both on concrete classes and on the result of
+        :meth:`find`. The returned object always contains the concrete EEP
+        identifier, including when the metadata is inherited from a shared
+        implementation class.
+        """
+        return cls.metadata
 
     @classmethod
     def find(cls, eep_string):
@@ -38,6 +120,9 @@ class EEP:
 
 
 class _switch_button(EEP):
+    metadata = EEPMetadata("", "One-button switch", "A single-button RPS switch telegram.", 0x05, (
+        EEPFieldMetadata("button_pushed", "Whether the button is pressed.", data_type="boolean", value_range=(0, 1)),
+    ))
     @classmethod
     def decode_message(cls, msg):
         if msg.org != 0x05:
@@ -70,6 +155,12 @@ class F6_01_01(_switch_button):
 
 
 class _RockerSwitch(EEP):
+    metadata = EEPMetadata("", "Two-rocker switch", "A two-part rocker switch using the RPS profile.", 0x05, (
+        EEPFieldMetadata("rocker_first_action", "Action of the first rocker.", value_range=(0, 7)),
+        EEPFieldMetadata("energy_bow", "Energy bow flag.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("rocker_second_action", "Action of the second rocker.", value_range=(0, 7)),
+        EEPFieldMetadata("second_action", "Second action flag.", data_type="boolean", value_range=(0, 1)),
+    ))
     @classmethod
     def decode_message(cls, msg):
         if msg.org != 0x05:
@@ -153,6 +244,11 @@ class WindowHandlePosition(int, Enum):
         raise Exception(f"Movement data ({movement}) not handled")
 
 class _WindowHandle(EEP):
+    metadata = EEPMetadata("", "Window handle", "Window handle movement and position telegram.", 0x05, (
+        EEPFieldMetadata("movement", "Raw four-bit movement code.", value_range=(0, 15), data_type="integer"),
+        EEPFieldMetadata("handle_position", "Interpreted handle position.", data_type="enum",
+                         values={0: "closed", 1: "open", 2: "tilt"}),
+    ))
 
     @classmethod
     def decode_message(cls, msg):
@@ -193,6 +289,10 @@ class F6_10_00(_WindowHandle):
 # ======================================
 
 class _SingleInputContact(EEP):
+    metadata = EEPMetadata("", "Single input contact", "A one-bit contact input with learn-button state.", 0x06, (
+        EEPFieldMetadata("learn_button", "Learn button flag.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("contact", "Contact state.", data_type="boolean", value_range=(0, 1)),
+    ))
     @classmethod
     def decode_message(cls, msg):
         if msg.org != 0x06:
@@ -232,6 +332,15 @@ class D5_00_01(_SingleInputContact):
 # ======================================
 
 class _LightTemperatureOccupancySensor(EEP):
+    metadata = EEPMetadata("", "Light, temperature and occupancy sensor",
+        "Sensor telegram containing supply voltage, illumination, temperature and PIR state.", 0x07, (
+        EEPFieldMetadata("supply_voltage", "Sensor supply voltage.", "V", (0.0, 5.1)),
+        EEPFieldMetadata("illumination", "Measured illumination.", "lx", (0.0, 510.0)),
+        EEPFieldMetadata("temperature", "Measured temperature.", "°C", (0.0, 51.0)),
+        EEPFieldMetadata("learn_button", "Learn button flag.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("pir_status", "Raw PIR status.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("occupancy_button", "Occupancy button flag.", data_type="boolean", value_range=(0, 1)),
+    ))
     temp_min = 0.0
     temp_max = 51.0
     illu_min = 0.0
@@ -405,6 +514,12 @@ class VOC_SubstancesType(Enum):
 
 
 class _AirQualitySensor(EEP):
+    metadata = EEPMetadata("", "Air quality sensor", "VOC concentration with substance type and unit.", 0x07, (
+        EEPFieldMetadata("concentration", "VOC concentration.", value_range=(0.0, 167769.6)),
+        EEPFieldMetadata("voc_type", "Measured VOC substance.", data_type="enum"),
+        EEPFieldMetadata("voc_unit", "Concentration unit.", data_type="enum", values={0: "ppb", 1: "µg/m3"}),
+        EEPFieldMetadata("learn_button", "Learn button flag.", data_type="boolean", value_range=(0, 1)),
+    ))
 
     @classmethod
     def decode_message(cls, msg):
@@ -458,6 +573,13 @@ class A5_09_0C(_AirQualitySensor):
     """Air quality sensor"""
 
 class _CO2TemperatureHumiditySensor(EEP):
+    metadata = EEPMetadata("", "CO2, temperature and humidity sensor",
+        "Indoor-air sensor telegram with carbon dioxide, temperature and relative humidity.", 0x07, (
+        EEPFieldMetadata("humidity", "Relative humidity.", "%", (0.0, 100.0)),
+        EEPFieldMetadata("co2", "Carbon dioxide concentration.", "ppm", (0, 2550)),
+        EEPFieldMetadata("temperature", "Measured temperature.", "°C", (0.0, 51.0)),
+        EEPFieldMetadata("learn_button", "Learn button flag.", data_type="boolean", value_range=(0, 1)),
+    ))
 
     @classmethod
     def decode_message(cls, msg):
@@ -529,6 +651,11 @@ class A5_09_04(_CO2TemperatureHumiditySensor):
 # ======================================
 
 class _CentralCommand(EEP):
+    metadata = EEPMetadata("", "Central command", "Central switching or dimming command.", 0x07, (
+        EEPFieldMetadata("command", "Command variant: switching or dimming.", data_type="enum", values={1: "switching", 2: "dimming"}),
+        EEPFieldMetadata("switching", "Switching command parameters.", data_type="object"),
+        EEPFieldMetadata("dimming", "Dimming command parameters.", data_type="object"),
+    ))
     @classmethod
     def decode_message(cls, msg):
         if msg.org != 0x07:
@@ -672,6 +799,9 @@ class A5_38_08(_CentralCommand):
 # ======================================
 
 class _EltakoSwitchingCommand(EEP):
+    metadata = EEPMetadata("", "Eltako switching command", "RPS switching command used by an Eltako gateway.", 0x05, (
+        EEPFieldMetadata("state", "Requested switch state.", data_type="boolean", value_range=(0, 1)),
+    ))
     @classmethod
     def decode_message(cls, msg):
         if msg.org != 0x05:
@@ -705,6 +835,10 @@ class M5_38_08(_EltakoSwitchingCommand):
 # ======================================
 
 class _TempControl(EEP):
+    metadata = EEPMetadata("", "Thermostat", "Current and desired temperature control telegram.", 0x07, (
+        EEPFieldMetadata("target_temperature", "Desired temperature.", "°C", (8.0, 30.0)),
+        EEPFieldMetadata("current_temperature", "Current temperature.", "°C", (0.0, 40.0)),
+    ))
     max_cur_temp:float = 40
     min_des_temp:float = 8
     max_des_temp:float = 30
@@ -753,6 +887,13 @@ class A5_10_03(_TempControl):
     """Thermostat - current and desired temperature"""
 
 class _HeatingCooling(EEP):
+    metadata = EEPMetadata("", "Heating and cooling controller",
+        "Temperature controller telegram with mode and controller priority.", 0x07, (
+        EEPFieldMetadata("mode", "Heating/cooling operating mode.", data_type="enum"),
+        EEPFieldMetadata("target_temperature", "Desired temperature.", "°C", (0.0, 40.0)),
+        EEPFieldMetadata("current_temperature", "Current temperature.", "°C", (0.0, 40.0)),
+        EEPFieldMetadata("priority", "Controller priority.", data_type="enum"),
+    ))
     min_temp:float = 0
     max_temp:float = 40
     usr:float = 255.0 # unscaled range 
@@ -844,6 +985,12 @@ class A5_10_06(_HeatingCooling):
     """Heating and Cooling"""
 
 class _HeatingCoolingHumidity(EEP):
+    metadata = EEPMetadata("", "Heating, cooling and humidity controller",
+        "Temperature and humidity values for heating/cooling control.", 0x07, (
+        EEPFieldMetadata("current_temperature", "Current temperature.", "°C"),
+        EEPFieldMetadata("target_temperature", "Desired temperature.", "°C"),
+        EEPFieldMetadata("humidity", "Relative humidity.", "%", (0.0, 100.0)),
+    ))
     temp_min = 0.0
     temp_max = 40.0
     usr = 250.0 # unscaled range 
@@ -899,6 +1046,19 @@ class A5_10_12(_HeatingCoolingHumidity):
 # ======================================
 
 class _WeatherStation(EEP):
+    metadata = EEPMetadata("", "Weather station",
+        "Weather station telegram with wind, temperature, light and rain data.", 0x07, (
+        EEPFieldMetadata("identifier", "Weather telegram variant.", data_type="enum", values={1: "weather", 2: "sun position"}),
+        EEPFieldMetadata("dawn_sensor", "Dawn/light sensor value.", value_range=(0.0, 999.0)),
+        EEPFieldMetadata("temperature", "Measured temperature.", "°C"),
+        EEPFieldMetadata("wind_speed", "Wind speed.", "m/s", (0.0, 70.0)),
+        EEPFieldMetadata("day_night", "Day/night flag.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("rain_indication", "Rain indication.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("sun_west", "West-facing sunlight.", "%", (0.0, 150.0)),
+        EEPFieldMetadata("sun_south", "South-facing sunlight.", "%", (0.0, 150.0)),
+        EEPFieldMetadata("sun_east", "East-facing sunlight.", "%", (0.0, 150.0)),
+        EEPFieldMetadata("hemisphere", "Hemisphere flag.", data_type="boolean", value_range=(0, 1)),
+    ))
     temp_min = -40.0
     temp_max = 80.0
     
@@ -1017,6 +1177,12 @@ class A5_13_01(_WeatherStation):
 # MARK: -  temperature + humidity sensor
 # ======================================
 class _TemperatureAndHumiditySensor(EEP):
+    metadata = EEPMetadata("", "Temperature and humidity sensor",
+        "Temperature and relative humidity sensor with a -20 to 60 degree range.", 0x07, (
+        EEPFieldMetadata("current_temperature", "Measured temperature.", "°C", (-20.0, 60.0)),
+        EEPFieldMetadata("humidity", "Relative humidity.", "%", (0.0, 100.0)),
+        EEPFieldMetadata("learn_button", "Learn button flag.", data_type="boolean", value_range=(0, 1)),
+    ))
     temp_min = -20.0
     temp_max = 60.0
     usr = 250.0 # unscaled range 
@@ -1069,6 +1235,13 @@ class A5_04_02(_TemperatureAndHumiditySensor):
 
 
 class _TemperatureAndHumiditySensor2(EEP):
+    metadata = EEPMetadata("", "Temperature and humidity sensor (0 to 40 °C)",
+        "Temperature and relative humidity sensor with temperature availability.", 0x07, (
+        EEPFieldMetadata("current_temperature", "Measured temperature.", "°C", (0.0, 40.0)),
+        EEPFieldMetadata("humidity", "Relative humidity.", "%", (0.0, 100.0)),
+        EEPFieldMetadata("temp_availability", "Temperature value available.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("learn_button", "Learn button flag.", data_type="boolean", value_range=(0, 1)),
+    ))
     temp_min = 0.0
     temp_max = 40.0
     usr = 250.0 # unscaled range 
@@ -1127,6 +1300,13 @@ class A5_04_01(_TemperatureAndHumiditySensor2):
 
 
 class _TemperatureAndHumiditySensor3(EEP):
+    metadata = EEPMetadata("", "Temperature and humidity sensor (extended)",
+        "Temperature and relative humidity sensor with heartbeat/event telegram type.", 0x07, (
+        EEPFieldMetadata("current_temperature", "Measured temperature.", "°C", (-20.0, 60.0)),
+        EEPFieldMetadata("humidity", "Relative humidity.", "%", (0.0, 100.0)),
+        EEPFieldMetadata("telegram_type", "Heartbeat or event telegram.", data_type="enum", values={0: "heartbeat", 1: "event"}),
+        EEPFieldMetadata("learn_button", "Learn button flag.", data_type="boolean", value_range=(0, 1)),
+    ))
     temp_min = -20.0
     temp_max = 60.0
     usr = 255.0 # unscaled range 
@@ -1191,6 +1371,14 @@ class A5_04_03(_TemperatureAndHumiditySensor3):
 # ======================================
 
 class _AutomatedMeterReading(EEP):
+    metadata = EEPMetadata("", "Automated meter reading",
+        "Meter reading with measurement channel, data type and decimal divisor.", 0x07, (
+        EEPFieldMetadata("meter_reading", "Raw cumulative meter reading.", value_range=(0, 16777215), data_type="integer"),
+        EEPFieldMetadata("measurement_channel", "Meter measurement channel.", value_range=(0, 15), data_type="integer"),
+        EEPFieldMetadata("learn_button", "Learn button flag.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("data_type", "Meter data type.", value_range=(0, 1), data_type="integer"),
+        EEPFieldMetadata("divisor", "Decimal divisor code.", value_range=(0, 3), data_type="integer"),
+    ))
     @classmethod
     def decode_message(cls, msg):
         if msg.org != 0x07:
@@ -1260,6 +1448,11 @@ class A5_12_03(_AutomatedMeterReading):
 # ======================================
 
 class _EltakoShutterStatus(EEP):
+    metadata = EEPMetadata("", "Shutter status", "Shutter state or movement status telegram.", None, (
+        EEPFieldMetadata("state", "Raw shutter state.", value_range=(0, 255), data_type="integer"),
+        EEPFieldMetadata("time", "Movement time.", "s", (0, 65535), data_type="integer"),
+        EEPFieldMetadata("direction", "Movement direction.", value_range=(0, 255), data_type="integer"),
+    ))
     @classmethod
     def decode_message(cls, msg):
         if msg.org == 0x05:
@@ -1316,6 +1509,11 @@ class G5_3F_7F(_EltakoShutterStatus):
 # ======================================
 
 class _EltakoShutterCommand(EEP):
+    metadata = EEPMetadata("", "Shutter command", "Shutter movement command with time and command code.", 0x07, (
+        EEPFieldMetadata("time", "Requested movement time.", "s", (0, 255), data_type="integer"),
+        EEPFieldMetadata("command", "Shutter command code.", value_range=(0, 255), data_type="integer"),
+        EEPFieldMetadata("learn_button", "Learn button flag.", data_type="boolean", value_range=(0, 1)),
+    ))
     @classmethod
     def decode_message(cls, msg):
         if msg.org != 0x07:
@@ -1364,6 +1562,13 @@ class H5_3F_7F(_EltakoShutterCommand):
 # ======================================
     
 class _OccupancySensor(EEP):
+    metadata = EEPMetadata("", "Occupancy sensor", "PIR occupancy sensor with supply-voltage status.", 0x07, (
+        EEPFieldMetadata("support_voltage", "Sensor supply voltage.", "V", (0.0, 5.0)),
+        EEPFieldMetadata("pir_status", "Raw PIR status.", value_range=(0, 255), data_type="integer"),
+        EEPFieldMetadata("pir_status_on", "Whether occupancy is detected.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("support_volrage_availability", "Supply-voltage value available.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("learn_button", "Learn button flag.", data_type="boolean", value_range=(0, 1)),
+    ))
 
     @classmethod
     def decode_message(cls, msg):
@@ -1424,6 +1629,12 @@ class A5_07_01(_OccupancySensor):
     """Occupancy Sensor"""
 
 class _BrightnessTwilightSensor(EEP):
+    metadata = EEPMetadata("", "Brightness and twilight sensor",
+        "Brightness sensor with a twilight value and a daylight illumination range.", 0x07, (
+        EEPFieldMetadata("twilight", "Twilight threshold/value.", "lx", (0, 255), data_type="integer"),
+        EEPFieldMetadata("day_light", "Daylight illumination.", "lx", (300, 30000)),
+        EEPFieldMetadata("illumination", "Selected illumination value.", "lx", (0, 30000)),
+    ))
     # ORG = 0x07
     # Data_byte3 = Brightness 0..100 lux (0..100)
     # (only if DB2 = 0x00)
@@ -1477,6 +1688,14 @@ class A5_06_01(_BrightnessTwilightSensor):
 
 class _DigitalInputAndBattery(EEP):
     """Digital Input regarding A5-30-01"""
+    metadata = EEPMetadata("", "Digital input with battery status",
+        "Digital contact input with battery and contact status bytes.", 0x07, (
+        EEPFieldMetadata("battery_status", "Raw battery status.", value_range=(0, 255), data_type="integer"),
+        EEPFieldMetadata("low_battery", "Whether the battery is low.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("contact_status", "Raw contact status.", value_range=(0, 255), data_type="integer"),
+        EEPFieldMetadata("contact_closed", "Whether the contact is closed.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("learn_button", "Learn button flag.", data_type="boolean", value_range=(0, 1)),
+    ))
 
     @classmethod
     def decode_message(cls, msg):
@@ -1533,6 +1752,16 @@ class A5_30_01(_DigitalInputAndBattery):
 
 class _DigitalInputsAndTemperature(EEP):
     """4 Digital Inputs and Temperature"""
+    metadata = EEPMetadata("", "Four digital inputs and temperature",
+        "Four digital input bits, temperature and wake status.", 0x07, (
+        EEPFieldMetadata("temperature", "Measured temperature.", "°C", (0.0, 40.0)),
+        EEPFieldMetadata("digital_input_0", "Digital input 0.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("digital_input_1", "Digital input 1.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("digital_input_2", "Digital input 2.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("digital_input_3", "Digital input 3.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("status_of_wake", "Wake-up status.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("learn_button", "Learn button flag.", data_type="boolean", value_range=(0, 1)),
+    ))
 
     @classmethod
     def decode_message(cls, msg):

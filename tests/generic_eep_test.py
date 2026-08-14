@@ -1,5 +1,6 @@
 import unittest
 import inspect
+import json
 from eltakobus.eep import *
 
 class TestEEPs(unittest.TestCase):
@@ -46,6 +47,19 @@ class TestEEPs(unittest.TestCase):
 
             self.assertEqual(sender_eep, type(eep))
 
+    def test_metadata_is_available_for_all_eeps(self):
+        for eep_name in self.get_all_eep_names():
+            eep_type = EEP.find(eep_name)
+            metadata = eep_type.get_metadata()
+
+            self.assertEqual(eep_name, metadata.eep)
+            self.assertTrue(metadata.name)
+            self.assertTrue(metadata.description)
+            self.assertIsInstance(metadata.fields, tuple)
+            self.assertEqual(len(metadata.fields), len({field.name for field in metadata.fields}))
+
+            # The public representation is suitable for JSON APIs.
+            json.dumps(metadata.as_dict())
 
 
 
