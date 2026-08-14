@@ -9,7 +9,7 @@ of terminating the communicator thread.
 
 import logging
 
-from .message import ESP2Message, RPSMessage, Regular1BSMessage, Regular4BSMessage, prettify
+from .message import ESP2Message, RPSMessage, Regular1BSMessage, Regular4BSMessage, VLDMessage, prettify
 
 
 class ESP3MessageAdapter:
@@ -92,6 +92,16 @@ class ESP3MessageAdapter:
                 org = 0x06
             elif rorg == 0xA5:
                 org = 0x07
+            elif rorg == 0xD2:
+                if len(data) < 6:
+                    raise ValueError("ESP3 VLD radio packet has too few data bytes")
+                sub_telegram = optional[0] if optional else 0
+                return VLDMessage(
+                    address=bytes(data[-5:-1]),
+                    status=data[-1],
+                    data=bytes(data[1:-5]),
+                    outgoing=sub_telegram == 3,
+                )
             else:
                 return self._convert_response(packet)
 

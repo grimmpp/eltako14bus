@@ -10,6 +10,9 @@ The project is now in the `1.x` series. The `1.0.0` release established the
 current public API and metadata model; subsequent compatible fixes use the
 patch component.
 
+The current release is `1.0.1`, which adds the requested Eltako A5 and ESP3
+VLD EEP decoders while preserving the existing ESP2 API.
+
 ## Choosing the version number
 
 - **Patch**: bug fixes, documentation, tests, and backward-compatible metadata
@@ -89,8 +92,8 @@ Release:
 3. Create and push an annotated tag matching the package version, for example:
 
    ```sh
-   git tag -a v1.0.0 -m "Release v1.0.0"
-   git push origin v1.0.0
+   git tag -a v1.0.1 -m "Release v1.0.1"
+   git push origin v1.0.1
    ```
 
 4. Create a GitHub Release for that tag and paste the corresponding

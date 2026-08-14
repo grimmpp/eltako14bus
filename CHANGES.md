@@ -4,6 +4,10 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Unreleased
 
+No changes yet.
+
+## 1.0.1
+
 ### Fixed
 
 - Updated the CoAP extra from obsolete `aiocoap 0.4a1` to a Python 3.10–3.14
@@ -12,6 +16,18 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 - Added clean source-archive manifests and release-time package-version checks.
 - Removed deprecated setuptools `tests_require` metadata and the deprecated
   license classifier warning.
+
+### Added
+
+- Added Eltako profiles `A5-13-02`, `A5-13-04`, `A5-14-01`, `A5-14-03`,
+  `A5-14-05`, `A5-14-07`, and `A5-14-08`, including Eltako-specific bit
+  layouts, scaling, metadata, error codes, and round-trip tests.
+- Added ESP3/VLD support for `D2-00-01`, `D2-14-40`, and `D2-14-41` through
+  the protocol-neutral `VLDMessage` type. Reserved/error values remain
+  available as raw attributes and are not silently converted to physical
+  values.
+- Added the corresponding FWS61, FSU55D/FSU65D, eTronic, FFGB-hg, and
+  FMMS44SB/FMS55SB/FMS55ESB/FMS65ESB entries to the independent device catalog.
 
 ## 1.0.0
 

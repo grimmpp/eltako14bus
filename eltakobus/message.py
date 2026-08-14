@@ -173,6 +173,26 @@ class Regular4BSMessage(_4BSMessage):
     def __repr__(self):
         return "<%s from %s, data %s, status = 0x%02x>"%(type(self).__name__, b2s(self.address), b2s(self.data), self.status)
 
+class VLDMessage:
+    """Protocol-neutral representation of an ESP3 VLD radio telegram.
+
+    VLD telegrams can be longer than the four data bytes supported by ESP2.
+    The object deliberately exposes the same ``org``, ``data``, ``address``
+    and ``status`` attributes as the existing radio message classes, so EEP
+    decoders can consume native ESP3 packets without changing the ESP2 API.
+    """
+    org = 0xD2
+
+    def __init__(self, address, status, data, outgoing=False):
+        self.address = address
+        self.status = status
+        self.data = bytes(data)
+        self.outgoing = outgoing
+
+    def __repr__(self):
+        return "<%s from %s, data %s, status = 0x%02x>" % (
+            type(self).__name__, b2s(self.address), b2s(self.data), self.status)
+
 class TeachIn4BSMessage2(_4BSMessage):
     """A Variation 2 (LRN type 1 and nothing bidirectional) 4BS Teach-In telegram"""
     teach_in = True

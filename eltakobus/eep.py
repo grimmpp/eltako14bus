@@ -1199,6 +1199,7 @@ class _WeatherStation(EEP):
 
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
+        data[3] = (self.identifier & 0x0F) << 4
         
         if self.identifier == 0x01:
             data[3] = data[3] | (self.rain_indication << 1)
@@ -1208,7 +1209,7 @@ class _WeatherStation(EEP):
             data[1] = int(((self.temperature - self.temp_min) / (self.temp_max - self.temp_min)) * 255.0)
             data[0] = int((self.dawn_sensor / 999.0) * 255.0)
         elif self.identifier == 0x02:
-            data[3] = data[3] | self.hemisphere
+            data[3] = data[3] | (self.hemisphere << 2)
             data[3] = data[3] | (self.learn_button << 3)
             data[2] = int((self.sun_east / 150.0) * 255.0)
             data[1] = int((self.sun_south / 150.0) * 255.0)
@@ -1281,6 +1282,69 @@ class _WeatherStation(EEP):
 
 class A5_13_01(_WeatherStation):
     """Weather station"""
+
+
+class A5_13_02(_WeatherStation):
+    """Sun-position telegram with west, south and east light sensors."""
+    metadata = EEPMetadata("", "Sun-position sensor",
+        "Three directional sunlight measurements and hemisphere indication.", 0x07, (
+        EEPFieldMetadata("sun_west", "West-facing sunlight.", "klx", (0.0, 150.0)),
+        EEPFieldMetadata("sun_south", "South-facing sunlight.", "klx", (0.0, 150.0)),
+        EEPFieldMetadata("sun_east", "East-facing sunlight.", "klx", (0.0, 150.0)),
+        EEPFieldMetadata("hemisphere", "Hemisphere flag (0 north, 1 south).", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("learn_button", "Learn bit.", data_type="boolean", value_range=(0, 1)),
+    ))
+
+
+class A5_13_04(EEP):
+    """Clock and weekday telegram used by Eltako time transmitters."""
+    metadata = EEPMetadata("", "Time and weekday",
+        "Weekday, 24-hour/12-hour clock and teach-in indicator.", 0x07, (
+        EEPFieldMetadata("weekday", "Weekday, Monday=1 through Sunday=7.", data_type="integer", value_range=(1, 7)),
+        EEPFieldMetadata("hour", "Hour as transmitted on the wire.", "h", (0, 23), data_type="integer"),
+        EEPFieldMetadata("minute", "Minute.", "min", (0, 59), data_type="integer"),
+        EEPFieldMetadata("second", "Second.", "s", (0, 59), data_type="integer"),
+        EEPFieldMetadata("time_format", "Clock format.", data_type="enum", values={0: "24h", 1: "12h"}),
+        EEPFieldMetadata("am_pm", "AM/PM bit for 12-hour display.", data_type="enum", values={0: "AM", 1: "PM"}),
+        EEPFieldMetadata("learn_button", "Learn bit.", data_type="boolean", value_range=(0, 1)),
+    ))
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        identifier = (msg.data[3] >> 4) & 0x0F
+        if identifier != 0x04:
+            raise NotImplementedError
+        return cls(
+            weekday=(msg.data[0] >> 5) & 0x07,
+            hour=msg.data[0] & 0x1F,
+            minute=msg.data[1] & 0x3F,
+            second=msg.data[2] & 0x3F,
+            learn_button=(msg.data[3] >> 3) & 1,
+            time_format=(msg.data[3] >> 2) & 1,
+            am_pm=(msg.data[3] >> 1) & 1,
+        )
+
+    def encode_message(self, address):
+        if not 1 <= self.weekday <= 7 or not 0 <= self.hour <= 23:
+            raise ValueError("weekday/hour is outside the A5-13-04 range")
+        if not 0 <= self.minute <= 59 or not 0 <= self.second <= 59:
+            raise ValueError("minute/second is outside the A5-13-04 range")
+        data = bytes(((self.weekday << 5) | self.hour, self.minute,
+                      self.second, 0x40 | (self.learn_button << 3) |
+                      (self.time_format << 2) | (self.am_pm << 1)))
+        return Regular4BSMessage(address, 0, data, True)
+
+    def __init__(self, weekday=1, hour=0, minute=0, second=0,
+                 learn_button=1, time_format=0, am_pm=0):
+        self.weekday = weekday
+        self.hour = hour
+        self.minute = minute
+        self.second = second
+        self.learn_button = learn_button
+        self.time_format = time_format
+        self.am_pm = am_pm
 
 # ======================================
 # MARK: -  temperature + humidity sensor
@@ -1794,6 +1858,128 @@ class A5_14_09(_EltakoWindowContact):
 
 class A5_14_0A(_EltakoWindowContact):
     """Eltako mTronic window contact status with alarm flag."""
+
+
+class _A514ContactSensor(EEP):
+    """Shared decoder for Eltako's supply-voltage/contact 4BS profiles."""
+    voltage_error_values = range(251, 256)
+
+    @classmethod
+    def _common(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        raw = msg.data[0]
+        return min(raw, 250) / 250.0 * 5.0, (raw if raw in cls.voltage_error_values else 0), (msg.data[3] >> 3) & 1
+
+    def _encode_common(self, address, db0):
+        if not 0.0 <= self.supply_voltage <= 5.0:
+            raise ValueError("Supply voltage must be between 0 and 5 V")
+        raw = min(250, int(round(self.supply_voltage / 5.0 * 250.0)))
+        return Regular4BSMessage(address, 0, bytes((raw, 0, 0, db0 | (self.learn_button << 3))), True)
+
+    @property
+    def supply_voltage(self): return self._supply_voltage
+    @property
+    def error_code(self): return self._error_code
+    @property
+    def learn_button(self): return self._learn_button
+
+    def __init__(self, supply_voltage=0.0, error_code=0, learn_button=1):
+        self._supply_voltage = supply_voltage
+        self._error_code = error_code
+        self._learn_button = learn_button
+
+
+class A5_14_01(_A514ContactSensor):
+    """Contact and supply voltage sensor."""
+    metadata = EEPMetadata("", "Contact sensor",
+        "Contact state with supply-voltage monitoring.", 0x07, (
+        EEPFieldMetadata("supply_voltage", "Supply voltage.", "V", (0.0, 5.0)),
+        EEPFieldMetadata("contact", "Contact state (0 closed, 1 open).", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("learn_button", "Learn bit.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("error_code", "Supply-voltage error code, 251..255.", data_type="integer", value_range=(0, 255)),
+    ))
+    @classmethod
+    def decode_message(cls, msg):
+        voltage, error, learn = cls._common(msg)
+        return cls(voltage, (msg.data[3] & 1), learn, error)
+    def encode_message(self, address):
+        return self._encode_common(address, self.contact & 1)
+    @property
+    def contact(self): return self._contact
+    def __init__(self, supply_voltage=0.0, contact=0, learn_button=1, error_code=0):
+        super().__init__(supply_voltage, error_code, learn_button); self._contact = int(bool(contact))
+
+
+class A5_14_03(_A514ContactSensor):
+    """Contact and vibration sensor."""
+    metadata = A5_14_01.metadata._replace(eep="", name="Contact and vibration sensor",
+        description="Contact, vibration and supply-voltage status.", fields=(
+        EEPFieldMetadata("supply_voltage", "Supply voltage.", "V", (0.0, 5.0)),
+        EEPFieldMetadata("contact", "Contact state (0 closed, 1 open).", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("vibration", "Vibration detected.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("learn_button", "Learn bit.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("error_code", "Supply-voltage error code, 251..255.", data_type="integer", value_range=(0, 255)),))
+    @classmethod
+    def decode_message(cls, msg):
+        voltage, error, learn = cls._common(msg)
+        return cls(voltage, msg.data[3] & 1, (msg.data[3] >> 1) & 1, learn, error)
+    def encode_message(self, address): return self._encode_common(address, self.contact | (self.vibration << 1))
+    @property
+    def contact(self): return self._contact
+    @property
+    def vibration(self): return self._vibration
+    def __init__(self, supply_voltage=0.0, contact=0, vibration=0, learn_button=1, error_code=0):
+        super().__init__(supply_voltage, error_code, learn_button); self._contact=int(bool(contact)); self._vibration=int(bool(vibration))
+
+
+class A5_14_05(A5_14_03):
+    """Vibration sensor with supply-voltage monitoring."""
+    metadata = A5_14_03.metadata._replace(eep="", name="Vibration sensor",
+        description="Vibration and supply-voltage status.", fields=tuple(f for f in A5_14_03.metadata.fields if f.name != "contact"))
+    @classmethod
+    def decode_message(cls, msg):
+        voltage, error, learn = cls._common(msg)
+        return cls(voltage, 0, (msg.data[3] >> 1) & 1, learn, error)
+    def encode_message(self, address): return self._encode_common(address, self.vibration << 1)
+
+
+class A5_14_07(A5_14_03):
+    """Door and lock contact sensor."""
+    metadata = A5_14_03.metadata._replace(eep="", name="Door and lock contact",
+        description="Door contact, lock contact and supply-voltage status.", fields=(
+        EEPFieldMetadata("supply_voltage", "Supply voltage.", "V", (0.0, 5.0)),
+        EEPFieldMetadata("door_contact", "Door state (0 closed, 1 open).", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("lock_contact", "Lock state (0 locked, 1 unlocked).", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("learn_button", "Learn bit.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("error_code", "Supply-voltage error code, 251..255.", data_type="integer", value_range=(0, 255)),))
+    @classmethod
+    def decode_message(cls, msg):
+        voltage, error, learn = cls._common(msg)
+        return cls(voltage, msg.data[3] >> 2 & 1, msg.data[3] >> 1 & 1, learn, error)
+    def encode_message(self, address): return self._encode_common(address, (self.door_contact << 2) | (self.lock_contact << 1))
+    @property
+    def door_contact(self): return self._contact
+    @property
+    def lock_contact(self): return self._vibration
+    def __init__(self, supply_voltage=0.0, door_contact=0, lock_contact=0, learn_button=1, error_code=0):
+        super().__init__(supply_voltage, door_contact, lock_contact, learn_button, error_code)
+
+
+class A5_14_08(A5_14_07):
+    """Door, lock and vibration contact sensor."""
+    metadata = A5_14_07.metadata._replace(eep="", name="Door, lock and vibration sensor",
+        description="Door contact, lock contact, vibration and supply-voltage status.", fields=A5_14_07.metadata.fields + (
+        EEPFieldMetadata("vibration", "Vibration detected.", data_type="boolean", value_range=(0, 1)),))
+    @classmethod
+    def decode_message(cls, msg):
+        voltage, error, learn = cls._common(msg)
+        return cls(voltage, msg.data[3] >> 2 & 1, msg.data[3] >> 1 & 1, msg.data[3] & 1, learn, error)
+    def encode_message(self, address): return self._encode_common(address, (self.door_contact << 2) | (self.lock_contact << 1) | self.vibration)
+    @property
+    def vibration(self): return self._vibration_extra
+    def __init__(self, supply_voltage=0.0, door_contact=0, lock_contact=0, vibration=0, learn_button=1, error_code=0):
+        super().__init__(supply_voltage, door_contact, lock_contact, learn_button, error_code); self._vibration_extra=int(bool(vibration))
 
 
 class _SmokeDetector(EEP):
@@ -2451,3 +2637,130 @@ class _DigitalInputsAndTemperature(EEP):
 
 class A5_30_03(_DigitalInputsAndTemperature):
     """Digital Inputs"""
+
+
+# ======================================
+# MARK: - VLD profiles (ESP3 RORG D2)
+# ======================================
+
+def _vld_bits(data, offset, size):
+    """Read an MSB-first bit field from a VLD payload."""
+    if len(data) * 8 < offset + size:
+        raise ValueError("VLD payload is shorter than the EEP profile")
+    value = 0
+    for bit in range(size):
+        absolute = offset + bit
+        value = (value << 1) | ((data[absolute // 8] >> (7 - absolute % 8)) & 1)
+    return value
+
+
+def _vld_message_data(msg, minimum):
+    if getattr(msg, "org", None) != 0xD2:
+        raise WrongOrgError
+    data = bytes(msg.data)
+    if len(data) < minimum:
+        raise ValueError("VLD payload is too short")
+    return data
+
+
+def _linear_or_none(raw, maximum, minimum, physical_max):
+    return None if raw > maximum else minimum + (raw / float(maximum)) * (physical_max - minimum)
+
+
+class D2_00_01(EEP):
+    """RCP/window handle controller with temperature and environment data."""
+    metadata = EEPMetadata("", "RCP with temperature measurement and display",
+        "Bidirectional controller status including handle, window, buttons, temperature, humidity, illumination and battery state.", 0xD2, (
+        EEPFieldMetadata("message_type", "VLD message type.", data_type="integer", value_range=(0, 255)),
+        EEPFieldMetadata("burglary_alarm", "Burglary alarm state.", data_type="enum", values={0: "not triggered", 1: "triggered", 14: "invalid", 15: "unsupported"}),
+        EEPFieldMetadata("protection_alarm", "Protection-plus alarm state.", data_type="enum", values={0: "not triggered", 1: "triggered", 14: "invalid", 15: "unsupported"}),
+        EEPFieldMetadata("handle_position", "Window-handle position.", data_type="enum", values={0: "undefined", 1: "up", 2: "down", 3: "left", 4: "right", 14: "invalid", 15: "unsupported"}),
+        EEPFieldMetadata("window_state", "Window state.", data_type="enum", values={0: "undefined", 1: "not tilted", 2: "tilted", 14: "invalid", 15: "unsupported"}),
+        EEPFieldMetadata("button_right", "Right button state.", data_type="enum", values={0: "no change", 1: "pressed", 2: "released", 14: "invalid", 15: "unsupported"}),
+        EEPFieldMetadata("button_left", "Left button state.", data_type="enum", values={0: "no change", 1: "pressed", 2: "released", 14: "invalid", 15: "unsupported"}),
+        EEPFieldMetadata("motion", "Motion state.", data_type="enum", values={0: "not triggered", 1: "triggered", 14: "invalid", 15: "unsupported"}),
+        EEPFieldMetadata("vacation_mode", "Vacation mode state.", data_type="enum", values={0: "no change", 1: "locally switched on", 2: "locally switched off", 14: "invalid", 15: "unsupported"}),
+        EEPFieldMetadata("temperature", "Measured temperature.", "°C", (-20.0, 60.0)),
+        EEPFieldMetadata("humidity", "Relative humidity.", "%", (0.0, 100.0)),
+        EEPFieldMetadata("illumination", "Illumination.", "lx", (0.0, 60000.0)),
+        EEPFieldMetadata("battery_state", "Battery state.", "%", (0.0, 100.0)),
+    ))
+    @classmethod
+    def decode_message(cls, msg):
+        data = _vld_message_data(msg, 10)
+        if data[0] != 0:
+            raise NotImplementedError
+        raw_temperature = _vld_bits(data, 40, 8)
+        raw_humidity = _vld_bits(data, 48, 8)
+        raw_illumination = _vld_bits(data, 56, 16)
+        return cls(
+            message_type=data[0], burglary_alarm=_vld_bits(data, 8, 4),
+            protection_alarm=_vld_bits(data, 12, 4), handle_position=_vld_bits(data, 16, 4),
+            window_state=_vld_bits(data, 20, 4), button_right=_vld_bits(data, 24, 4),
+            button_left=_vld_bits(data, 28, 4), motion=_vld_bits(data, 32, 4),
+            vacation_mode=_vld_bits(data, 36, 4), temperature=_linear_or_none(raw_temperature, 250, -20, 60),
+            humidity=None if raw_humidity >= 201 else raw_humidity / 2.0,
+            illumination=None if raw_illumination > 60000 else float(raw_illumination),
+            battery_state=None if _vld_bits(data, 72, 5) > 20 else _vld_bits(data, 72, 5) * 5,
+            temperature_raw=raw_temperature, humidity_raw=raw_humidity,
+            illumination_raw=raw_illumination, battery_state_raw=_vld_bits(data, 72, 5))
+
+    def __init__(self, **values):
+        for name, value in values.items(): setattr(self, name, value)
+
+
+class _D2_14(EEP):
+    metadata = EEPMetadata("", "Indoor multisensor",
+        "Temperature, humidity, illumination and three-axis acceleration VLD telegram.", 0xD2, (
+        EEPFieldMetadata("temperature", "Measured temperature.", "°C", (-40.0, 60.0)),
+        EEPFieldMetadata("humidity", "Relative humidity.", "%", (0.0, 100.0)),
+        EEPFieldMetadata("illumination", "Illumination.", "lx", (0.0, 100000.0)),
+        EEPFieldMetadata("acceleration_status", "Acceleration event status.", data_type="enum", values={0: "periodic", 1: "threshold 1", 2: "threshold 2", 3: "reserved"}),
+        EEPFieldMetadata("acceleration_x", "Acceleration X.", "g", (-2.5, 2.5)),
+        EEPFieldMetadata("acceleration_y", "Acceleration Y.", "g", (-2.5, 2.5)),
+        EEPFieldMetadata("acceleration_z", "Acceleration Z.", "g", (-2.5, 2.5)),
+    ))
+    @classmethod
+    def _decode_common(cls, msg):
+        data = _vld_message_data(msg, 9)
+        raws = [_vld_bits(data, 0, 10), _vld_bits(data, 10, 8), _vld_bits(data, 18, 17),
+                _vld_bits(data, 35, 2), _vld_bits(data, 37, 10), _vld_bits(data, 47, 10), _vld_bits(data, 57, 10)]
+        return data, raws
+    @staticmethod
+    def _physical(raw, maximum, minimum, maximum_value):
+        return _linear_or_none(raw, maximum, minimum, maximum_value)
+    def __init__(self, temperature, humidity, illumination, acceleration_status,
+                 acceleration_x, acceleration_y, acceleration_z, contact=None, **raws):
+        self.temperature = temperature; self.humidity = humidity; self.illumination = illumination
+        self.acceleration_status = acceleration_status; self.acceleration_x = acceleration_x
+        self.acceleration_y = acceleration_y; self.acceleration_z = acceleration_z
+        if contact is not None: self.contact = contact
+        for name, value in raws.items(): setattr(self, name, value)
+
+
+class D2_14_40(_D2_14):
+    """Indoor multisensor proposal profile without a contact bit."""
+    @classmethod
+    def decode_message(cls, msg):
+        data, r = cls._decode_common(msg)
+        return cls(cls._physical(r[0], 1000, -40, 60), None if r[1] >= 201 else r[1] / 2.0,
+                   None if r[2] > 100000 else float(r[2]), r[3],
+                   cls._physical(r[4], 1000, -2.5, 2.5), cls._physical(r[5], 1000, -2.5, 2.5),
+                   cls._physical(r[6], 1000, -2.5, 2.5), temperature_raw=r[0], humidity_raw=r[1],
+                   illumination_raw=r[2], acceleration_x_raw=r[4], acceleration_y_raw=r[5], acceleration_z_raw=r[6])
+
+
+class D2_14_41(_D2_14):
+    """Indoor multisensor proposal profile with a window/contact bit."""
+    metadata = _D2_14.metadata._replace(eep="", name="Indoor multisensor with contact",
+        description="Temperature, humidity, illumination, acceleration and contact VLD telegram.", fields=_D2_14.metadata.fields + (
+        EEPFieldMetadata("contact", "Contact state (0 open, 1 closed).", data_type="boolean", value_range=(0, 1)),))
+    @classmethod
+    def decode_message(cls, msg):
+        data, r = cls._decode_common(msg)
+        return cls(cls._physical(r[0], 1000, -40, 60), None if r[1] >= 201 else r[1] / 2.0,
+                   None if r[2] > 100000 else float(r[2]), r[3],
+                   cls._physical(r[4], 1000, -2.5, 2.5), cls._physical(r[5], 1000, -2.5, 2.5),
+                   cls._physical(r[6], 1000, -2.5, 2.5), contact=bool(_vld_bits(data, 67, 1)),
+                   temperature_raw=r[0], humidity_raw=r[1], illumination_raw=r[2],
+                   acceleration_x_raw=r[4], acceleration_y_raw=r[5], acceleration_z_raw=r[6])

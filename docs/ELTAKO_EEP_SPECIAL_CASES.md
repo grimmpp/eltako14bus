@@ -14,6 +14,13 @@ Covered examples include:
   status `0x09/0x12`;
 - FHMB/FRWB (`A5-30-03`): alarm/no-alarm markers `0x0F/0x1F`;
 - FFGB/mTronic (`A5-14-09`/`A5-14-0A`): closed, tilt, open and alarm status;
+- FWS61 (`A5-13-02`): directional sunlight values in DB3/DB2/DB1 and the
+  hemisphere bit in DB0;
+- FSU55D/FSU65D (`A5-13-04`): weekday and clock fields with Eltako's
+  identifier/LRN and 12/24-hour flags;
+- FFGB-hg and eTronic (`A5-14-01`, `A5-14-03`, `A5-14-05`, `A5-14-07`,
+  `A5-14-08`): supply-voltage error values 251…255 and product-specific
+  contact, lock, and vibration bits;
 - FWS81/FRW: Eltako RPS water, smoke, and low-battery status bytes;
 - Eltako gateway switching and shutter status/command telegrams.
 

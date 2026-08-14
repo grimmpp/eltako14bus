@@ -2,7 +2,7 @@
 
 This page lists every EEP profile currently registered by
 `eltakobus.eep.EEP`. The list is based on the runtime registry in
-`eep.py` and currently contains 61 profiles. Names use the standard
+`eep.py` and currently contains 71 profiles. Names use the standard
 `RORG-FUNC-TYPE` notation.
 
 The metadata is also available to applications:
@@ -76,7 +76,14 @@ single outgoing radio organization.
 | A5-12-01 | Automated meter reading | 07 | `meter_reading` 0…16,777,215; `measurement_channel` 0…15; learn/data/divisor fields |
 | A5-12-02 | Automated meter reading | 07 | `meter_reading` 0…16,777,215; `measurement_channel` 0…15; learn/data/divisor fields |
 | A5-12-03 | Automated meter reading | 07 | `meter_reading` 0…16,777,215; `measurement_channel` 0…15; learn/data/divisor fields |
-| A5-13-01 | Weather station | 07 | `identifier` weather/sun position; `dawn_sensor` 0…999; `wind_speed` 0…70 m/s; day/night/rain flags; sun directions 0…150 %; `temperature`; `hemisphere` |
+| A5-13-01 | Weather station | 07 | `identifier` weather/sun position; `dawn_sensor` 0…999; `wind_speed` 0…70 m/s; day/night/rain flags; sun directions 0…150 klx; `temperature`; `hemisphere` |
+| A5-13-02 | Sun-position sensor | 07 | `sun_west`, `sun_south`, `sun_east` 0…150 klx; `hemisphere`, `learn_button` 0…1 |
+| A5-13-04 | Time and weekday | 07 | `weekday` 1…7; `hour` 0…23 h; `minute`, `second` 0…59; 12/24-hour and AM/PM flags |
+| A5-14-01 | Contact sensor | 07 | `supply_voltage` 0…5 V; `contact` 0…1; `learn_button`; `error_code` 0…255 |
+| A5-14-03 | Contact and vibration sensor | 07 | `supply_voltage` 0…5 V; `contact`, `vibration`, `learn_button` 0…1; `error_code` |
+| A5-14-05 | Vibration sensor | 07 | `supply_voltage` 0…5 V; `vibration`, `learn_button` 0…1; `error_code` |
+| A5-14-07 | Door and lock contact | 07 | `supply_voltage` 0…5 V; `door_contact`, `lock_contact`, `learn_button` 0…1; `error_code` |
+| A5-14-08 | Door, lock and vibration sensor | 07 | `supply_voltage` 0…5 V; `door_contact`, `lock_contact`, `vibration`, `learn_button` 0…1; `error_code` |
 | A5-14-09 | Window contact | 07 | `supply_voltage` 0…5 V; `window_state` closed/tilted/open; `alarm` 0…1 |
 | A5-14-0A | Window contact | 07 | `supply_voltage` 0…5 V; `window_state` closed/tilted/open; `alarm` 0…1 |
 | A5-20-04 | Valve and temperature sensor | 07 | `valve_position` 0…100 %; `temperature`; `status` 0…255; `battery_empty` 0…1 |
@@ -103,6 +110,24 @@ single outgoing radio organization.
 | G5-3F-7F | Shutter status | n/a | `state` 0…255; `time` 0…65,535 s; `direction` 0…255 |
 | H5-3F-7F | Shutter command | 07 | `time` 0…6,553.5 s; `command` 0…255; `learn_button`, `send_time_in_seconds` 0…1 |
 | M5-38-08 | Eltako switching command | 05 | `state` 0…1 |
+
+## D2 VLD profiles
+
+These profiles are decoded from ESP3 VLD telegrams. They accept the public
+`VLDMessage` object or any incoming message exposing compatible `org` and
+`data` attributes; they cannot be represented as the fixed four-byte ESP2
+message. Reserved and error encodings are retained in `*_raw` attributes and
+the corresponding physical property is returned as `None`.
+
+| EEP | Name | ORG | Fields and ranges |
+|---|---|---:|---|
+| D2-00-01 | RCP with temperature measurement and display | D2 | handle/window/button/alarm state; `temperature` −20…60 °C; `humidity` 0…100 %; `illumination` 0…60,000 lx; `battery_state` 0…100 % |
+| D2-14-40 | Indoor multisensor | D2 | `temperature` −40…60 °C; `humidity` 0…100 %; `illumination` 0…100,000 lx; three-axis acceleration −2.5…2.5 g |
+| D2-14-41 | Indoor multisensor with contact | D2 | D2-14-40 fields plus `contact` 0…1 |
+
+D2-14-40 is marked as a draft proposal in the current EEP Viewer material;
+applications should therefore keep the raw values and tolerate future profile
+revisions.
 
 ## Notes on interpretation
 

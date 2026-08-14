@@ -103,6 +103,34 @@ DEVICE_CATALOG: list[dict] = [
      'platform': 'sensor', 'eep': 'A5-13-01', 'address_count': 1},
     {'hw_type': 'FWS61', 'brand': 'ELTAKO', 'description': 'Weather Station',
      'platform': 'sensor', 'eep': 'A5-13-01', 'address_count': 1},
+    {'hw_type': 'FWS61', 'brand': 'ELTAKO', 'description': 'Sun-position sensor telegram',
+     'platform': 'sensor', 'eep': 'A5-13-02', 'address_count': 1},
+
+    # time and special Eltako contact/weather sensors
+    {'hw_type': 'FSU55D/230V', 'brand': 'ELTAKO', 'description': 'Clock and weekday transmitter',
+     'platform': 'sensor', 'eep': 'A5-13-04', 'address_count': 1},
+    {'hw_type': 'FSU65D/230V', 'brand': 'ELTAKO', 'description': 'Clock and weekday transmitter',
+     'platform': 'sensor', 'eep': 'A5-13-04', 'address_count': 1},
+    {'hw_type': 'eTronic', 'brand': 'ELTAKO', 'description': 'Contact sensor',
+     'platform': 'binary_sensor', 'eep': 'A5-14-01', 'address_count': 1},
+    {'hw_type': 'FFGB-hg', 'brand': 'ELTAKO', 'description': 'Contact and vibration sensor',
+     'platform': 'binary_sensor', 'eep': 'A5-14-03', 'address_count': 1},
+    {'hw_type': 'FFGB-hg', 'brand': 'ELTAKO', 'description': 'Vibration sensor',
+     'platform': 'binary_sensor', 'eep': 'A5-14-05', 'address_count': 1},
+    {'hw_type': 'FFGB-hg', 'brand': 'ELTAKO', 'description': 'Door and lock contact',
+     'platform': 'binary_sensor', 'eep': 'A5-14-07', 'address_count': 1},
+    {'hw_type': 'FFGB-hg', 'brand': 'ELTAKO', 'description': 'Door, lock and vibration sensor',
+     'platform': 'binary_sensor', 'eep': 'A5-14-08', 'address_count': 1},
+
+    # VLD devices are received via ESP3 gateways.
+    {'hw_type': 'FMMS44SB', 'brand': 'ELTAKO', 'description': 'Room controller with environment data',
+     'platform': 'sensor', 'eep': 'D2-00-01', 'address_count': 1},
+    {'hw_type': 'FMS55SB', 'brand': 'ELTAKO', 'description': 'Indoor multisensor',
+     'platform': 'sensor', 'eep': 'D2-14-40', 'address_count': 1},
+    {'hw_type': 'FMS55ESB', 'brand': 'ELTAKO', 'description': 'Indoor multisensor with contact',
+     'platform': 'sensor', 'eep': 'D2-14-41', 'address_count': 1},
+    {'hw_type': 'FMS65ESB', 'brand': 'ELTAKO', 'description': 'Indoor multisensor with contact',
+     'platform': 'sensor', 'eep': 'D2-14-41', 'address_count': 1},
 
     # temperature and humidity
     {'hw_type': 'FLGTF', 'brand': 'ELTAKO', 'description': 'Temperature and Humidity Sensor',
