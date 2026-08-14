@@ -852,7 +852,7 @@ class _TempControl(EEP):
             # reversed range (from 40° to 0°)
             current_temp = ((cls.usr - msg.data[2]) / cls.usr) * cls.max_cur_temp
             # range from 8° to 30°
-            target_temp = (msg.data[1] / cls.usr) * (cls.max_des_temp - cls.min_des_temp)
+            target_temp = cls.min_des_temp + (msg.data[1] / cls.usr) * (cls.max_des_temp - cls.min_des_temp)
 
             return cls(target_temp, current_temp)
         else:
@@ -864,7 +864,7 @@ class _TempControl(EEP):
         # reversed range (from 40° to 0°)
         data[2] = int((self.max_cur_temp - self.current_temperature) / self.max_cur_temp * self.usr)
         # range from 8° to 30°
-        data[1] = int(self.target_temperature / (self.max_des_temp - self.min_des_temp) * self.usr)
+        data[1] = int((self.target_temperature - self.min_des_temp) / (self.max_des_temp - self.min_des_temp) * self.usr)
         
         status = 0x00
 
@@ -1510,25 +1510,42 @@ class G5_3F_7F(_EltakoShutterStatus):
 
 class _EltakoShutterCommand(EEP):
     metadata = EEPMetadata("", "Shutter command", "Shutter movement command with time and command code.", 0x07, (
-        EEPFieldMetadata("time", "Requested movement time.", "s", (0, 255), data_type="integer"),
+        EEPFieldMetadata("time", "Requested movement time; resolution is selected by send_time_in_seconds.", "s", (0, 6553.5), data_type="number"),
         EEPFieldMetadata("command", "Shutter command code.", value_range=(0, 255), data_type="integer"),
         EEPFieldMetadata("learn_button", "Learn button flag.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("send_time_in_seconds", "Encode movement time in whole seconds when true, otherwise in 100-ms units.", data_type="boolean", value_range=(0, 1)),
     ))
     @classmethod
     def decode_message(cls, msg):
         if msg.org != 0x07:
             raise WrongOrgError
         
-        time = msg.data[1]
+        send_time_in_seconds = not (msg.data[3] & 0x02)
+        if send_time_in_seconds:
+            time = msg.data[1]
+        else:
+            time = ((msg.data[0] << 8) | msg.data[1]) / 10.0
         command = msg.data[2]
         learn_button = (msg.data[3] & 0x08) >> 3
 
-        return cls(time, command, learn_button)
+        return cls(time, command, learn_button, send_time_in_seconds)
 
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
         
-        data[1] = self.time
+        if self.send_time_in_seconds:
+            if not isinstance(self.time, int) or isinstance(self.time, bool):
+                raise ValueError("Cover drive time must be an integer in seconds")
+            if not 0 <= self.time <= 255:
+                raise ValueError("Cover drive time must be between 0 and 255 seconds")
+            data[1] = self.time
+        else:
+            time_100ms = round(self.time * 10)
+            if not 0 <= time_100ms <= 0xffff:
+                raise ValueError("Cover drive time must be between 0 and 6553.5 seconds")
+            data[0] = (time_100ms >> 8) & 0xff
+            data[1] = time_100ms & 0xff
+            data[3] = 0x02
         data[2] = self.command
         data[3] = data[3] | (self.learn_button << 3)
 
@@ -1548,10 +1565,15 @@ class _EltakoShutterCommand(EEP):
     def learn_button(self):
         return self._learn_button
 
-    def __init__(self, time, command, learn_button):
+    @property
+    def send_time_in_seconds(self):
+        return self._send_time_in_seconds
+
+    def __init__(self, time, command, learn_button, send_time_in_seconds=True):
         self._time = time
         self._command = command
         self._learn_button = learn_button
+        self._send_time_in_seconds = send_time_in_seconds
 
 class H5_3F_7F(_EltakoShutterCommand):
     """Eltako Shutter Command"""

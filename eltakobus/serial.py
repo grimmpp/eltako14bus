@@ -23,7 +23,14 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
             self._mutex = mutex
 
         async def get(self) -> any:
-            return self._receive.get()
+            # Poll without blocking the asyncio event loop. This also makes
+            # cancellation safe; queue.Queue.get in a worker thread would
+            # leave that worker blocked after the coroutine is cancelled.
+            while True:
+                try:
+                    return self._receive.get_nowait()
+                except queue.Empty:
+                    await asyncio.sleep(0.01)
         
         def empty(self) -> bool:
             return self._receive.empty()
@@ -74,6 +81,10 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
         self.is_serial_connected = threading.Event()
 
         self.status_changed_handler = None
+        # Only one request/response transaction may consume the shared
+        # receive queue at a time.  This lock is intentionally asyncio-based:
+        # exchange() is an async API even though the serial worker is a thread.
+        self._exchange_lock = asyncio.Lock()
 
     @property
     def callback_func(self):
@@ -94,8 +105,8 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
         try:
             if self.status_changed_handler:
                 self.status_changed_handler(connected)
-        except Exception as e:
-            pass
+        except Exception:
+            self.log.exception("Serial status callback failed")
 
 
     def stop(self):
@@ -111,19 +122,42 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
             self._suppress.append((time.time(), request.serialize()))
         self.transmit.put((time.time(), request))
 
+    def _consume_echo(self, raw_message:bytes) -> bool:
+        """Consume a matching echoed frame and report whether it matched."""
+        if not self.suppress_echo:
+            return False
+
+        now = time.time()
+        self._suppress = [
+            (timestamp, serialized)
+            for timestamp, serialized in self._suppress
+            if timestamp >= now - 30
+        ]
+        echo_index = next(
+            (index for index, (_, serialized) in enumerate(self._suppress)
+             if serialized == raw_message),
+            None,
+        )
+        if echo_index is None:
+            return False
+
+        del self._suppress[:echo_index + 1]
+        return True
+
 
     def set_callback(self, callback):
         with self.__mutex:
             self.__callback = callback
-            if callable is not None:
-                while not self.transmit.empty(): self.transmit.get()
+            if callback is not None:
+                while not self.transmit.empty():
+                    self.transmit.get_nowait()
+                    self.transmit.task_done()
 
 
     async def send_base_id_request(self):
         # is fam14
         if self.suppress_echo:
-            # start in thread because of blocking sleep function
-            await asyncio.to_thread(asyncio.run, self.request_fam14_base_id())
+            await self.request_fam14_base_id()
             
         else:
             data = b'\xAB\x58\x00\x00\x00\x00\x00\x00\x00\x00\x00'
@@ -149,7 +183,8 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
             base_id = AddressExpression((response.value[0:4],None))
 
             resp_msg = self.create_base_id_info_message(base_id, 0)
-            __callback(resp_msg)
+            if __callback is not None:
+                __callback(resp_msg)
 
             #TODO: report version
             # resp_msg:EltakoDiscoveryReply = await self.exchange(EltakoDiscoveryRequest(255), EltakoDiscoveryReply)
@@ -189,8 +224,16 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
 
 
     def reconnect(self):
-        self._stop_flag.set()
-        self._stop_flag.wait()
+        if self.is_alive():
+            self.stop()
+            self.join()
+
+        # threading.Thread instances are normally single-use. Reinitialize
+        # the thread state after it has stopped so the historical reconnect()
+        # API remains usable.
+        if self._started.is_set():
+            threading.Thread.__init__(self)
+        self._stop_flag.clear()
         self.start()
 
 
@@ -224,17 +267,20 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                         # dropp old messages
                         if ser_msg[0] < time.time() - 30:
                             self.log.info("Dropping echo-suppressed message because it timed out without being echoed")
-                        else:
-                            self.__serial.write(ser_msg[1].serialize())
-                            self.log.debug("Sent message: %s", ser_msg[1])
-                            # baud speed on the bus is 9600 and gateway usually have 57600
-                            # this means we need to watch out that the internal gateway buffer does not overflow
-                            # fam14 (baudrate 57600) delay_message=.001
-                            # fam14 (baudrate 9600) delay_message=.001
-                            # fam-usb (baudrate 9600) delay_message=.001
-                            # fgw14-usb (baudrate 57600) delay_message=.01
-                            time.sleep(self.delay_message)
                             self.transmit.task_done()
+                        else:
+                            try:
+                                self.__serial.write(ser_msg[1].serialize())
+                                self.log.debug("Sent message: %s", ser_msg[1])
+                                # baud speed on the bus is 9600 and gateway usually have 57600
+                                # this means we need to watch out that the internal gateway buffer does not overflow
+                                # fam14 (baudrate 57600) delay_message=.001
+                                # fam14 (baudrate 9600) delay_message=.001
+                                # fam-usb (baudrate 9600) delay_message=.001
+                                # fgw14-usb (baudrate 57600) delay_message=.01
+                                time.sleep(self.delay_message)
+                            finally:
+                                self.transmit.task_done()
 
                     # read from bus
                     self._buffer.extend( self.__serial.read_all() )
@@ -244,7 +290,16 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                     error_msg = ""
                     while len(self._buffer) >= 14:
                         try:
-                            parsed_msg = prettify( ESP2Message.parse(bytes(self._buffer[:14])) )
+                            raw_message = bytes(self._buffer[:14])
+
+                            # The adapter echoes transmitted frames. Drop only
+                            # a matching frame; unrelated telegrams remain
+                            # visible to listeners.
+                            if self._consume_echo(raw_message):
+                                self._buffer = self._buffer[14:]
+                                continue
+
+                            parsed_msg = prettify(ESP2Message.parse(raw_message))
                             # self.log.debug("Received Message: %s", parsed_msg)
                             
                         except ParseError as e:
@@ -262,7 +317,10 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                             if self.__callback is None:
                                 self.receive.put(parsed_msg)
                             else: 
-                                self.__callback(parsed_msg)
+                                try:
+                                    self.__callback(parsed_msg)
+                                except Exception:
+                                    self.log.exception("Serial receive callback failed")
 
                 # required to not utilize the whole CPU power
                 time.sleep(.00001)
@@ -272,10 +330,17 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                 self._fire_status_change_handler(connected=False)
                 self.is_serial_connected.clear()
                 self.log.exception(e)
+                failed_serial = self.__serial
                 self.__serial = None
+                if failed_serial is not None:
+                    try:
+                        failed_serial.close()
+                    except Exception:
+                        self.log.exception("Failed to close serial connection")
                 if self._auto_reconnect:
                     self.log.info("Serial communication crashed. Wait %s seconds for reconnection.", self.__recon_time)
-                    time.sleep(self.__recon_time)
+                    # Event.wait is interruptible by stop(), unlike sleep().
+                    self._stop_flag.wait(self.__recon_time)
                 else:
                     self._fire_status_change_handler(connected=False)
                     self._stop_flag.set()
@@ -284,11 +349,20 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
         self._fire_status_change_handler(connected=False)
         if self.__serial is not None:
             self.__serial.close()
+            self.__serial = None
         self.is_serial_connected.clear()
         self.log.info('Serial communication stopped')
 
 
     async def exchange(self, request: ESP2Message, responsetype=None, retries:int=3, timeout:float=1.0) -> ESP2Message:
+        await self._exchange_lock.acquire()
+        try:
+            return await self._exchange_impl(request, responsetype, retries, timeout)
+        finally:
+            self._exchange_lock.release()
+
+
+    async def _exchange_impl(self, request: ESP2Message, responsetype=None, retries:int=3, timeout:float=1.0) -> ESP2Message:
         """Send a request and return a response depending on responsetype as
         BusInterface.exchange does.
         """
@@ -371,16 +445,24 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
     def data_received(self, d):
         self._buffer += d
         if self._buffer_request is not None and \
+                not self._buffer_request.done() and \
                 len(self._buffer) >= self._buffer_request_level:
             self._buffer_request.set_result(None)
 
     def eof_received(self):
         self.transport = None
-        if self._buffer_request is not None:
+        if self._buffer_request is not None and not self._buffer_request.done():
             self._buffer_request.set_exception(EOFError)
+
+    def connection_lost(self, exc):
+        self.transport = None
+        if self._buffer_request is not None and not self._buffer_request.done():
+            self._buffer_request.set_exception(exc or EOFError())
 
     async def await_bufferlevel(self, level):
         """Wait until at least level bytes are in self._buffer"""
+        if len(self._buffer) >= level:
+            return
         if self._buffer_request is not None:
             raise RuntimeError("Simultaneous waiting for buffer levels")
         self._buffer_request = asyncio.Future()
@@ -452,8 +534,8 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
                     # until that's further investigated or obsolete.
                     await asyncio.sleep(0.3)
             except Exception as e:
-                if conn_made:
-                    self.conn_made.set_exception(e)
+                if conn_made is not None:
+                    conn_made.set_exception(e)
                     return
                 else:
                     raise
@@ -556,6 +638,8 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
         serialized = request.serialize()
         if self.suppress_echo:
             self._suppress.append((time.time(), serialized))
+        if self.transport is None or isinstance(self.transport, asyncio.Future):
+            raise ConnectionError("Serial transport is not connected")
         self.transport.write(serialized)
 
     base_exchange = None

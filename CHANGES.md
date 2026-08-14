@@ -2,7 +2,7 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
-## 0.0.83
+## 1.0.0
 
 ### Added
 
@@ -11,13 +11,43 @@ This project adheres to [Semantic Versioning](http://semver.org/).
   identifiers, units, logical value ranges, data types, and enum values.
 - Added `EEP.get_metadata()` and JSON-friendly `EEPMetadata.as_dict()`.
 - Added developer documentation for using, testing, and extending the library.
+- Added a full command-line reference for `eltakotool.py` to the developer
+  guide, and an `eltakotool.py --version` flag.
+- Added `eltakotool.py benchmark ADDRESS`, measuring forced-poll
+  request/response performance across several `delay_message` values and
+  recommending the fastest delay meeting a minimum success rate.
+- Added `tests/eltakotool_test.py`, covering argument parsing, the
+  `benchmark` command's delay/rate measurement, and the `fakefam` command's
+  serial/socket fallback.
+
+### Fixed
+
+- Fixed A5-10-03 target-temperature decoding and encoding to honor the
+  documented 8 °C lower bound.
+- `eltakotool.py --serial_lib_version 1` no longer crashes with a
+  `NameError`: the option now parses as `int`, matching the `--baud_rate`
+  option, which previously compared a string against `1`/`2` and left `bus`
+  unassigned.
+- `eltakotool.py fakefam` no longer crashes: it passed an unsupported `loop=`
+  keyword argument to `asyncio.start_unix_server()`/`asyncio.start_server()`,
+  and fell through into dead code referencing an undefined variable after a
+  successful serial connection closed. `fakefam` now also honors
+  `--baud_rate` instead of always using 57600.
 
 ### Compatibility
 
 - Existing EEP constructors, encoders, decoders, and `EEP.find()` behavior are
   unchanged.
+- H5-3F-7F keeps its existing three-argument whole-second constructor and now
+  optionally supports 100-ms movement-time resolution.
 - Metadata containers use immutable standard-library named tuples and add no
   runtime dependency.
+
+### Packaging
+
+- Source distributions and wheels include `eltakobus` only; repository tests
+  and hardware fixtures remain available in the source tree but are excluded
+  from installed library packages.
 
 ## Bug fix in initializing EEP A5-10-06 HeatingCooling
 

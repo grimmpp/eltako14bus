@@ -8,12 +8,12 @@ MAJOR.MINOR.PATCH
 
 The project is currently in the `0.x` series. Existing releases have used
 patch-style increments (`0.0.81`, `0.0.82`, ...), so the next compatible
-release after `0.0.82` is `0.0.83`.
+release after `0.0.82` is `1.0.0`.
 
 ## Choosing the version number
 
 - **Patch**: bug fixes, documentation, tests, and backward-compatible metadata
-  or API additions. Example: `0.0.83`.
+  or API additions. Example: `1.0.0`.
 - **Minor**: a larger backward-compatible feature release when the project
   adopts a more conventional `0.x` versioning scheme.
 - **Major**: an intentional breaking API or behavior change.
@@ -82,8 +82,8 @@ Release:
 3. Create and push an annotated tag matching the package version, for example:
 
    ```sh
-   git tag -a v0.0.83 -m "Release v0.0.83"
-   git push origin v0.0.83
+   git tag -a v1.0.0 -m "Release v1.0.0"
+   git push origin v1.0.0
    ```
 
 4. Create a GitHub Release for that tag and paste the corresponding

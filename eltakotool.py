@@ -110,45 +110,179 @@ async def run_fakefam(bus, reader, writer, conn_made: Optional[asyncio.Future]=N
     if conn_end:
         conn_end.set_result(None)
 
-async def fakefam(bus, serverdevice):
+async def fakefam(bus, serverdevice, baud_rate=57600):
     # serverdevice will be tested to be a character device, and otherwise
     # opened as a unix or tcp socket depending on whether it contains slashes
     # or colons.
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     try:
-        # reader, writer = await serial_asyncio.open_serial_connection(serverdevice, baudrate=57600, loop=loop)
-        # the above should work as well -- this is a workaround for not-sure-what
         reader = asyncio.StreamReader()
         protocol = asyncio.StreamReaderProtocol(reader)
-        transport, _ = await serial_asyncio.create_serial_connection(loop, lambda: protocol, serverdevice, baudrate=57600)
+        transport, _ = await serial_asyncio.create_serial_connection(loop, lambda: protocol, serverdevice, baudrate=baud_rate)
         writer = asyncio.StreamWriter(transport, protocol, reader, loop)
         await run_fakefam(bus, reader, writer)
+        return
     except serial.serialutil.SerialException:
         pass
-    else:
-        def read():
-            return os.read(s.fileno(), 1024)
-        write = s.write
-
-        q = asyncio.Queue(loop=loop)
-        loop.add_reader(s.fileno(), lambda: q.put_nowait(read()))
-        return
 
     conn_end = asyncio.Future()
     if '/' in serverdevice or not ':' in serverdevice:
         conn_made = asyncio.Future()
-        await asyncio.start_unix_server(functools.partial(run_fakefam, bus, conn_made=conn_made, conn_end=conn_end), serverdevice, loop=loop)
+        await asyncio.start_unix_server(functools.partial(run_fakefam, bus, conn_made=conn_made, conn_end=conn_end), serverdevice)
         await conn_made
         os.unlink(serverdevice)
     else:
         # note that this could run several connections at the same time, which is both great and terrifying
         host, port = serverdevice.split(':', 1)
-        await asyncio.start_server(functools.partial(run_fakefam, bus, conn_end=conn_end), host, int(port), loop=loop)
+        await asyncio.start_server(functools.partial(run_fakefam, bus, conn_end=conn_end), host, int(port))
     await conn_end
 
 async def send_raw(bus, data):
     print(prettify(await bus.exchange(ESP2Message(bytes(data)), ESP2Message)))
+
+
+DEFAULT_BENCHMARK_DELAYS = (0.0, 0.001, 0.002, 0.005, 0.01, 0.02)
+
+
+def parse_benchmark_delays(value):
+    """Parse comma-separated non-negative message delays in seconds."""
+    try:
+        delays = tuple(float(part.strip()) for part in value.split(",") if part.strip())
+    except ValueError as exc:
+        raise ValueError("message delays must be comma-separated numbers") from exc
+    if not delays or any(delay < 0 for delay in delays):
+        raise ValueError("message delays must contain at least one non-negative value")
+    return delays
+
+
+async def benchmark_message_delays(
+    bus,
+    request_factory,
+    *,
+    delays=DEFAULT_BENCHMARK_DELAYS,
+    messages_per_delay=10,
+    response_type=ESP2Message,
+    timeout=1.0,
+    minimum_success_rate=0.95,
+):
+    """Measure request/response performance for several serial message delays.
+
+    ``request_factory`` must return a fresh, non-mutated request for every
+    attempt. The benchmark changes ``bus.delay_message`` for each candidate,
+    sends the requests through ``bus.exchange()``, and records successful
+    responses, timeouts, elapsed time, throughput, and response rate.
+
+    This is intended for a V2 serial bus and uses polling requests such as
+    :class:`EltakoPollForced`; it does not write configuration memory or change
+    actuator state. The returned list is suitable for JSON output or further
+    analysis. ``recommended_delay`` is the smallest tested delay meeting
+    ``minimum_success_rate`` and highest measured throughput; it is ``None``
+    when no candidate qualifies.
+    """
+    delays = tuple(float(delay) for delay in delays)
+    if not delays or any(delay < 0 for delay in delays):
+        raise ValueError("delays must contain at least one non-negative value")
+    if messages_per_delay < 1:
+        raise ValueError("messages_per_delay must be positive")
+    if timeout <= 0:
+        raise ValueError("timeout must be positive")
+    if not 0 <= minimum_success_rate <= 1:
+        raise ValueError("minimum_success_rate must be between 0 and 1")
+    if not hasattr(bus, "delay_message"):
+        raise TypeError("benchmark_message_delays requires a bus with delay_message")
+
+    original_delay = bus.delay_message
+    results = []
+    try:
+        for delay in delays:
+            bus.delay_message = delay
+            successful = 0
+            timed_out = 0
+            started = time.perf_counter()
+
+            for _ in range(messages_per_delay):
+                try:
+                    response = await bus.exchange(
+                        request_factory(),
+                        response_type,
+                        retries=1,
+                        timeout=timeout,
+                    )
+                except (TimeoutError, asyncio.TimeoutError):
+                    response = None
+
+                if response is None:
+                    timed_out += 1
+                else:
+                    successful += 1
+
+            elapsed = time.perf_counter() - started
+            attempts = successful + timed_out
+            results.append({
+                "delay": delay,
+                "messages": attempts,
+                "successful": successful,
+                "timed_out": timed_out,
+                "success_rate": successful / attempts,
+                "elapsed": elapsed,
+                "messages_per_second": attempts / elapsed if elapsed else 0.0,
+            })
+    finally:
+        bus.delay_message = original_delay
+
+    qualifying = [
+        result for result in results
+        if result["success_rate"] >= minimum_success_rate
+    ]
+    recommended = max(
+        qualifying,
+        key=lambda result: (result["messages_per_second"], -result["delay"]),
+        default=None,
+    )
+    for result in results:
+        result["recommended"] = result is recommended
+    return results
+
+
+def print_benchmark_results(results, *, minimum_success_rate=0.95):
+    """Print benchmark rows and return the recommended delay, if any."""
+    print("delay(s)  success  timeout  success-rate  messages/s")
+    for result in results:
+        print(
+            f"{result['delay']:>7.4f}  {result['successful']:>7}  "
+            f"{result['timed_out']:>7}  {result['success_rate']:>12.1%}  "
+            f"{result['messages_per_second']:>11.2f}"
+        )
+
+    recommended = next((result for result in results if result["recommended"]), None)
+    if recommended is None:
+        print(f"recommended delay: none (minimum success-rate {minimum_success_rate:.1%} not reached)")
+        return None
+
+    print(
+        f"recommended delay: {recommended['delay']:.4f}s "
+        f"(success-rate {recommended['success_rate']:.1%})"
+    )
+    return recommended["delay"]
+
+
+async def benchmark_cmd(bus, address, delays, messages_per_delay, timeout, minimum_success_rate):
+    """Run a read-only forced-poll benchmark for one device address."""
+    print(
+        f"Benchmarking forced polls for address {address}; "
+        f"{messages_per_delay} messages per delay, timeout {timeout:.3f}s."
+    )
+    results = await benchmark_message_delays(
+        bus,
+        lambda: EltakoPollForced(address),
+        delays=delays,
+        messages_per_delay=messages_per_delay,
+        response_type=ESP2Message,
+        timeout=timeout,
+        minimum_success_rate=minimum_success_rate,
+    )
+    print_benchmark_results(results, minimum_success_rate=minimum_success_rate)
 
 async def lock_bus(bus):
     print(await(locking.lock_bus(bus)))
@@ -390,27 +524,59 @@ async def automode(bus):
     # 9: similar to 5-8 but potentially odd according to documentation
     # 10: similar to 1 in that the FAM responds to all unlocks
 
-def main():
-    p = argparse.ArgumentParser()
+def _tool_version():
+    try:
+        from importlib.metadata import version, PackageNotFoundError
+    except ImportError:
+        return "unknown"
+    try:
+        return version("eltako14bus")
+    except PackageNotFoundError:
+        return "unknown"
+
+
+EPILOG = """\
+examples:
+  eltakotool.py --eltakobus /dev/ttyUSB0 enumerate
+  eltakotool.py --eltakobus /dev/ttyUSB0 --baud_rate 9600 show_off
+  eltakotool.py --eltakobus /dev/ttyUSB0 benchmark 5 --messages 20
+  eltakotool.py --eltakobus /dev/ttyUSB0 dump bus.yaml
+  eltakotool.py --eltakobus /dev/ttyUSB0 verify bus.yaml
+
+Exactly one of --rawuri or --eltakobus must be given to select a transport.
+"lock_bus", "unlock_bus", "dump", "verify", and especially "reprogram" change
+bus or device state; keep a memory dump before using them.
+"""
+
+
+def build_arg_parser():
+    """Construct the eltakotool argument parser (no side effects, easy to test)."""
+    p = argparse.ArgumentParser(
+        prog="eltakotool.py",
+        description="Command-line tool for interacting with an Eltako Series 14 RS485 bus.",
+        epilog=EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p.add_argument("--rawuri", help="URI at which a raw ESP2 resource is exposed")
     p.add_argument("--eltakobus", help="File at which a RS485 Eltako bus can be opened")
-    p.add_argument("--baud_rate", default=57600, help="baud rate for transmitter or gateway (FAM15=57600, FGW14-USB=57600, FAM-USB=9600)")
+    p.add_argument("--baud_rate", default=57600, type=int, help="baud rate for transmitter or gateway (FAM15=57600, FGW14-USB=57600, FAM-USB=9600)")
     p.add_argument("--cache", help="Store cachable responses locally", action='store_true')
     p.add_argument("--cachefile", help="File to cache responses at", type=Path)
     p.add_argument("--preread", help="Enumerate bus and read devices' memory before executing the command", action='store_true')
     p.add_argument("--log_level", help="Log level", default="info")
-    p.add_argument("--serial_lib_version", default=2)
+    p.add_argument("--serial_lib_version", default=2, type=int, choices=(1, 2), help="Serial backend to use: 2 selects RS485SerialInterfaceV2 (recommended, threaded with auto-reconnect), 1 selects the legacy asyncio-protocol-based RS485SerialInterface")
+    p.add_argument("--version", action="version", version=f"%(prog)s {_tool_version()}")
     subp = p.add_subparsers(metavar="command", dest="command")
 
     p_enumerate = subp.add_parser("enumerate", help="Explore the bus")
     p_fakefam = subp.add_parser("fakefam", help="Act like a FAM14")
     p_fakefam.add_argument("device", help="Serial device to listen on for bus commands")
 
-    p_send4bs = subp.add_parser("send_raw", help="Send a raw telegram (h_seq/len, org, data, id, status), with bytes as individual hex arguments")
+    p_send_raw = subp.add_parser("send_raw", help="Send a raw telegram (h_seq/len, org, data, id, status), with bytes as individual hex arguments")
     base16 = functools.partial(int, base=16)
-    p_send4bs.add_argument("data", type=base16, nargs=11)
+    p_send_raw.add_argument("data", type=base16, nargs=11)
 
-    p_eval = subp.add_parser("eval", help="Display the response to a single message object passed as a Python expression")
+    p_eval = subp.add_parser("eval", help="Display the response to a single message object passed as a Python expression (runs the expression via eval(); local debugging use only)")
     p_eval.add_argument("expr")
 
     subp.add_parser("lock_bus", help="Lock the bus")
@@ -432,19 +598,55 @@ def main():
     p_listen = subp.add_parser("listen", help="Display any messages sent on the bus without sending (not supported on all backends)")
     p_listen.add_argument("--ensure-unlocked", help="Lock and unlock the bus before listening, thus forcing a FAM to re-enumerate", action='store_true')
 
+    p_benchmark = subp.add_parser(
+        "benchmark",
+        help="Measure forced-poll response performance for message delays",
+    )
+    p_benchmark.add_argument("address", type=int, help="Bus address to poll")
+    p_benchmark.add_argument(
+        "--messages", type=int, default=10,
+        help="Requests per delay candidate (default: %(default)s)",
+    )
+    p_benchmark.add_argument(
+        "--delays", type=parse_benchmark_delays,
+        default=DEFAULT_BENCHMARK_DELAYS,
+        help="Comma-separated message delays in seconds",
+    )
+    p_benchmark.add_argument(
+        "--timeout", type=float, default=1.0,
+        help="Response timeout per request in seconds (default: %(default)s)",
+    )
+    p_benchmark.add_argument(
+        "--minimum-success-rate", type=float, default=0.95,
+        help="Minimum response rate for recommendation (default: %(default)s)",
+    )
+
     subp.add_parser("automode", help="Determine what's on the bus (including FAM mode), report, and listen")
 
+    return p
+
+
+def check_conflicting_transport_opts(opts):
+    """Return an error message if --rawuri/--eltakobus are used inconsistently, else None."""
+    if opts.rawuri is not None and opts.eltakobus is not None:
+        return "--rawuri and --eltakobus are conflicting options."
+    if opts.rawuri is None and opts.eltakobus is None:
+        return "Autodiscovery is not yet implemented, please give --rawuri argument or an --eltakobus."
+    return None
+
+
+def main():
+    p = build_arg_parser()
     opts = p.parse_args()
 
     logging.basicConfig(level=opts.log_level.upper())
 
     if opts.command is None:
-        raise p.error("A command is required.")
+        p.error("A command is required.")
 
-    if opts.rawuri is not None and opts.eltakobus is not None:
-        raise p.error("--rawuri and --eltakobus are conflicting options.")
-    if opts.rawuri is None and opts.eltakobus is None:
-        raise p.error("Autodiscovery is not yet implemented, please give --rawuri argument or an --eltakobus.")
+    transport_error = check_conflicting_transport_opts(opts)
+    if transport_error is not None:
+        p.error(transport_error)
 
     loop = asyncio.new_event_loop()
 
@@ -454,12 +656,12 @@ def main():
         cache_rawpart = opts.rawuri.replace('/', '-')
     if opts.eltakobus:
         if opts.serial_lib_version == 2:
-            bus = RS485SerialInterfaceV2(opts.eltakobus, baud_rate=int(opts.baud_rate), reconnection_timeout=1, delay_message=0.001)
+            bus = RS485SerialInterfaceV2(opts.eltakobus, baud_rate=opts.baud_rate, reconnection_timeout=1, delay_message=0.001)
             bus.start()
             bus.is_serial_connected.wait()
         elif opts.serial_lib_version == 1:
             bus_ready = asyncio.Future(loop=loop)
-            bus = RS485SerialInterface(opts.eltakobus, baud_rate=int(opts.baud_rate))
+            bus = RS485SerialInterface(opts.eltakobus, baud_rate=opts.baud_rate)
             asyncio.ensure_future(bus.run(loop, conn_made=bus_ready), loop=loop)
             loop.run_until_complete(bus_ready)
 
@@ -479,7 +681,7 @@ def main():
     if opts.command == "enumerate":
         maintask = enumerate_cmd(bus)
     elif opts.command == "fakefam":
-        maintask = fakefam(bus, opts.device)
+        maintask = fakefam(bus, opts.device, opts.baud_rate)
     elif opts.command == "send_raw":
         maintask = send_raw(bus, opts.data)
     elif opts.command == "eval":
@@ -505,6 +707,15 @@ def main():
         maintask = reprogram(bus, opts.filename)
     elif opts.command == 'listen':
         maintask = listen(bus, opts.ensure_unlocked)
+    elif opts.command == 'benchmark':
+        maintask = benchmark_cmd(
+            bus,
+            opts.address,
+            opts.delays,
+            opts.messages,
+            opts.timeout,
+            opts.minimum_success_rate,
+        )
     elif opts.command == 'automode':
         maintask = automode(bus)
     else:

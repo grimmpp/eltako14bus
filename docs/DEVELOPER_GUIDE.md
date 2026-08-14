@@ -132,6 +132,28 @@ receiving, `delay_message` for gateways with a small internal buffer,
 `set_status_changed_handler(handler)` for connection status changes. Do not
 use callback mode and `exchange()` concurrently.
 
+### Measuring message delay
+
+The command-line tool can measure request/response behavior for several
+`delay_message` values. It sends only forced-poll requests to the selected bus
+address; it does not write configuration memory or change actuator state:
+
+```sh
+python eltakotool.py \
+  --eltakobus /dev/cu.usbserial-AQ028YCS \
+  benchmark 5 \
+  --messages 20 \
+  --delays 0,0.001,0.002,0.005,0.01,0.02
+```
+
+The output reports successful responses, timeouts, response rate, throughput,
+and the highest-throughput tested delay meeting the configured minimum success
+rate. The recommendation is valid only for the tested setup.
+The same measurement is available in Python as
+`eltakotool.benchmark_message_delays(bus, request_factory, ...)`, returning a
+list of result dictionaries. Delay requirements depend on the gateway,
+adapter, bus traffic, and connected devices.
+
 The older `RS485SerialInterface` remains in the source tree for compatibility.
 New integrations should use V2 unless they specifically need the legacy
 asyncio protocol lifecycle.
@@ -351,6 +373,48 @@ python eltakotool.py --eltakobus /dev/ttyUSB0 verify bus.yaml
 python eltakotool.py --eltakobus /dev/ttyUSB0 show_off
 ```
 
+Full usage, including every subcommand's options, is always available from the
+tool itself:
+
+```sh
+python eltakotool.py --help
+python eltakotool.py <command> --help
+```
+
+### Global options
+
+| Option | Description |
+| --- | --- |
+| `--rawuri URI` | Connect through a raw ESP2 CoAP endpoint. Conflicts with `--eltakobus`. |
+| `--eltakobus DEVICE` | Connect through a serial device (e.g. `/dev/ttyUSB0`). Conflicts with `--rawuri`. |
+| `--baud_rate RATE` | Baud rate for the transmitter or gateway (default `57600`). FAM15 and FGW14-USB use `57600`; FAM-USB uses `9600`. |
+| `--serial_lib_version {1,2}` | Serial backend: `2` (default) selects `RS485SerialInterfaceV2`, a threaded implementation with auto-reconnect; `1` selects the legacy asyncio-protocol-based `RS485SerialInterface`. |
+| `--cache` | Cache exchange responses locally (see [Caching and memory prefetch](#caching-and-memory-prefetch)). |
+| `--cachefile PATH` | Explicit cache file location; defaults to an XDG cache path derived from the transport. |
+| `--preread` | Enumerate the bus and read every device's memory before running the command. Only useful together with `--cache`. |
+| `--log_level LEVEL` | Standard library log level name, e.g. `debug`, `info`, `warning` (default `info`). |
+| `--version` | Print the installed package version and exit. |
+
+Exactly one of `--rawuri` or `--eltakobus` is required; the tool does not yet
+support autodiscovery.
+
+### Commands
+
+| Command | Purpose | Changes bus/device state? |
+| --- | --- | --- |
+| `enumerate` | Scan addresses 1-254, print discovered devices, then offer to assign an address to a device in LRN mode. | Yes — address assignment |
+| `fakefam DEVICE` | Act as a FAM14 towards a client connected on `DEVICE` (serial port, unix socket path, or `host:port`), by relaying its ESP2 requests onto the real bus. | No (relays only) |
+| `send_raw B0 B1 ... B10` | Send a single raw ESP2 telegram given as eleven hexadecimal bytes (`h_seq/len org data... id status`) and print the response. | Depends on the telegram sent |
+| `eval EXPR` | Evaluate `EXPR` as a Python expression that builds a message object (all `eltakobus` message classes are in scope), send it, and print the response. Runs the expression through `eval()` — a local debugging aid, not for untrusted input. | Depends on the expression |
+| `lock_bus` | Lock the bus so a FAM stops driving it. | Yes |
+| `unlock_bus` | Release the bus back to normal FAM operation. | Yes |
+| `show_off [SEARCHTERM]` | Discover devices (optionally filtered by address or type name) and cycle through a demo of what each one can do. | Yes — triggers actuator demos |
+| `dump [FILENAME]` | Read every discovered device's memory and store it in a YAML file (default `bus.yaml`). | No |
+| `verify [FILENAME]` | Compare live device memory against a previously stored dump and report differing rows; exits with status 1 if any differ. | No |
+| `reprogram [FILENAME]` | Write memory rows from a dump file to the matching live devices wherever they differ. | **Yes — writes device configuration** |
+| `listen [--ensure-unlocked]` | Print bus traffic as it happens without sending anything. `--ensure-unlocked` locks and releases the bus first to force a FAM to re-enumerate. | Only with `--ensure-unlocked` |
+| `automode` | Detect what is currently driving the bus (FAM present, scanning, polling), report it, then fall through to `listen`. | No |
+
 Raw telegrams accept eleven hexadecimal bytes in the tool's ESP2 body order:
 
 ```sh
@@ -358,19 +422,32 @@ python eltakotool.py --eltakobus /dev/ttyUSB0 send_raw \
   0b 05 10 00 00 00 00 00 ff dd cc
 ```
 
-Use `--rawuri` instead of `--eltakobus` for a raw CoAP endpoint. `lock_bus`,
-`unlock_bus`, `dump`, `verify`, and especially `reprogram` are maintenance
-commands. Review the output and keep a backup before using them.
+`fakefam` is useful for running the tool's own memory or verification commands
+against production software (e.g. a PCT14/FAM14 client) while still allowing
+`eltakotool.py` itself to talk to the real bus:
+
+```sh
+python eltakotool.py --eltakobus /dev/ttyUSB0 fakefam /tmp/fakefam.sock
+```
+
+Use `--rawuri` instead of `--eltakobus` for a raw CoAP endpoint. `enumerate`,
+`lock_bus`, `unlock_bus`, `show_off`, `dump`, `verify`, and especially
+`reprogram` are maintenance commands. Review the output and keep a backup
+before using them.
 
 ## Testing without hardware
 
-The repository currently contains a unit test for EEP class construction. The
-package import currently loads the serial backend, so install the serial extra
-before running the suite. Then use the standard library test runner; `pytest`
-itself is not required:
+The `tests/` directory contains offline unit tests covering EEP construction
+(`generic_eep_test.py`), both serial transports (`serial_test.py`), a replay of
+a recorded hardware session (`replay_bus_test.py`), and `eltakotool.py`'s
+argument parsing and `fakefam` fallback logic (`eltakotool_test.py`). The
+package import currently loads the serial and CoAP backends, and
+`eltakotool.py` additionally imports `xdg.BaseDirectory`, so install both
+extras before running the suite. Then use the standard library test runner;
+`pytest` itself is not required:
 
 ```sh
-python -m pip install -e '.[serial]'
+python -m pip install -e '.[serial,coap,eltakotool]'
 python -m unittest discover -s tests -p '*_test.py' -v
 ```
 
@@ -380,10 +457,14 @@ If pytest is installed, the same tests can be run with:
 python -m pytest -q
 ```
 
-The test enumerates all registered EEP subclasses and verifies that each
-supported profile can be instantiated from its constructor signature. A small
-offline smoke test for message serialization is also useful when developing a
-transport:
+`generic_eep_test.py` enumerates all registered EEP subclasses and verifies
+that each supported profile can be instantiated from its constructor
+signature. `eltakotool_test.py` calls `eltakotool.build_arg_parser()` directly
+to check option defaults and types (for example, that `--serial_lib_version`
+and `--baud_rate` parse to `int`, not `str`) without touching a real bus, and
+exercises `fakefam()`'s serial-vs-socket fallback with patched
+`serial_asyncio`/`asyncio` calls. A small offline smoke test for message
+serialization is also useful when developing a transport:
 
 ```python
 from eltakobus.message import EltakoDiscoveryRequest, ESP2Message
@@ -398,6 +479,50 @@ For transport tests, implement a fake `BusInterface.base_exchange()` that
 returns serialized response bytes. This lets discovery, memory, locking, and
 device code be tested without opening a serial port. Keep fake responses as
 real 14-byte messages so checksum and parser behavior are exercised.
+
+An opt-in hardware soak test is available in
+`tests/serial_hardware_test.py`. It opens two configured FTDI ports in
+parallel, receives existing traffic, and sends no frames. Because it accesses
+real devices, it is skipped by default:
+
+```sh
+ELTAKO_SERIAL_HARDWARE_TEST=1 \
+ELTAKO_SERIAL_TEST_SECONDS=30 \
+python -m unittest tests.serial_hardware_test -v
+```
+
+Review the `PORTS` tuple and `baud_rate` in that test before using it with a
+different installation, or set `ELTAKO_SERIAL_PORTS` to a comma-separated
+list of ports. Do not turn this test into a transmitting load test
+unless the adapters are connected to an isolated test bus or a loopback
+fixture.
+
+Unavailable configured ports are ignored. If none of the configured ports can
+be opened, the hardware tests are reported as skipped rather than failed, so
+they remain safe to run on developer machines and in CI without adapters.
+
+The recorded validation result for the AQ028YCS/FAM14 setup is documented in
+[`docs/HARDWARE_TEST_AQ028YCS.md`](HARDWARE_TEST_AQ028YCS.md).
+
+The serial unit tests also simulate an adapter disappearing during active
+receiving. `test_auto_reconnects_after_serial_interface_disappears` verifies
+that the failed port is closed, the connection status is cleared, a new port
+is opened after the reconnection delay, and bus traffic is received again.
+The test uses no hardware and is protected by timeouts so a reconnect bug
+cannot leave the test process waiting indefinitely.
+
+The recorded session is also used by `tests/replay_bus_test.py` as an offline
+bus simulation. It replays discovery, all memory rows, FUD14 status polling,
+and the generated dimming command without opening a serial port:
+
+```sh
+python -m unittest tests.replay_bus_test -v
+```
+
+Keep the JSON recording synchronized with the replay assertions when the
+hardware fixture is regenerated. The recording contains installation-specific
+configuration and addresses and should not be replaced with data from a
+different installation without reviewing the test expectations.
 
 When adding a new EEP, add a concrete class whose name follows the
 `XX_XX_XX` convention. `EEP.__init_subclass__` registers it automatically;

@@ -1,0 +1,437 @@
+{
+  "baud_rate": 57600,
+  "devices": {
+    "/dev/cu.usbserial-AQ028YCS": {
+      "message_counts": {
+        "EltakoPoll": 275,
+        "total": 275
+      },
+      "sample_frames": [
+        {
+          "hex": "a55aabfc000000000000000005ac",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000006ad",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000007ae",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000008af",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000009b0",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000ab1",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000bb2",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000cb3",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000eb5",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000001a8",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000002a9",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000003aa",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000004ab",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000005ac",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000006ad",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000007ae",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000008af",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000009b0",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000ab1",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000bb2",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000cb3",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000eb5",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000001a8",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000002a9",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000003aa",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000004ab",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000005ac",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000006ad",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000007ae",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000008af",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000009b0",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000ab1",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000bb2",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000cb3",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000eb5",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000001a8",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000002a9",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000003aa",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000004ab",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000005ac",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000006ad",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000007ae",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000008af",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000009b0",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000ab1",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000bb2",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000cb3",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000eb5",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000001a8",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000002a9",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000003aa",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000004ab",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000005ac",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000006ad",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000007ae",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000008af",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000009b0",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000ab1",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000bb2",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000cb3",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000eb5",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000001a8",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000002a9",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000003aa",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000004ab",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000005ac",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000006ad",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000007ae",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000008af",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000009b0",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000ab1",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000bb2",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000cb3",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000eb5",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000001a8",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000002a9",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000003aa",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000004ab",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000005ac",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000006ad",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000007ae",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000008af",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000009b0",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000ab1",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000bb2",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000cb3",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000eb5",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000001a8",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000002a9",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000003aa",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000004ab",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000005ac",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000006ad",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000007ae",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000008af",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc000000000000000009b0",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000ab1",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000bb2",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000cb3",
+          "type": "EltakoPoll"
+        },
+        {
+          "hex": "a55aabfc00000000000000000eb5",
+          "type": "EltakoPoll"
+        }
+      ],
+      "status_events": [
+        {
+          "connected": false,
+          "monotonic": 224153.333219458
+        },
+        {
+          "connected": false,
+          "monotonic": 224153.333286416
+        },
+        {
+          "connected": true,
+          "monotonic": 224153.336285375
+        },
+        {
+          "connected": false,
+          "monotonic": 224168.341381625
+        }
+      ]
+    }
+  },
+  "duration_seconds": 15.0,
+  "echo_detection": "disabled",
+  "ports": [
+    "/dev/cu.usbserial-AQ028YCS"
+  ],
+  "writes_performed": false
+}

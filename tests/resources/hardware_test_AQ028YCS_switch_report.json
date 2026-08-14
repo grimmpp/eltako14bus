@@ -1,0 +1,33 @@
+{
+  "port": "/dev/tty.usbserial-AQ028YCS",
+  "address": 5,
+  "channel": 1,
+  "started_at": "2026-08-14T12:01:03+0200",
+  "lock_result": "Bus was successfully locked as acknowledged by a FAM",
+  "device": "FUD14",
+  "model": "04044200",
+  "direct_command": "00-00-B0-05",
+  "initial_dim": 89,
+  "initial_status": {
+    "channel": 0,
+    "dim": 89,
+    "ramping_speed": 0
+  },
+  "initial_poll_attempts": 1,
+  "requested_dim": 0,
+  "observed_dim": 0,
+  "status_after_attempts": 1,
+  "status_after": {
+    "channel": 0,
+    "dim": 0,
+    "ramping_speed": 0
+  },
+  "restored_dim": 89,
+  "restore_status": {
+    "channel": 0,
+    "dim": 89,
+    "ramping_speed": 0
+  },
+  "restore_poll_attempts": 1,
+  "restored": true
+}
