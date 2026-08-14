@@ -6,16 +6,15 @@ This project uses a version format compatible with Semantic Versioning:
 MAJOR.MINOR.PATCH
 ```
 
-The project is currently in the `0.x` series. Existing releases have used
-patch-style increments (`0.0.81`, `0.0.82`, ...), so the next compatible
-release after `0.0.82` is `1.0.0`.
+The project is now in the `1.x` series. The `1.0.0` release established the
+current public API and metadata model; subsequent compatible fixes use the
+patch component.
 
 ## Choosing the version number
 
 - **Patch**: bug fixes, documentation, tests, and backward-compatible metadata
-  or API additions. Example: `1.0.0`.
-- **Minor**: a larger backward-compatible feature release when the project
-  adopts a more conventional `0.x` versioning scheme.
+  or API additions. Example: `1.0.1`.
+- **Minor**: a larger backward-compatible feature release, for example `1.1.0`.
 - **Major**: an intentional breaking API or behavior change.
 
 During the `0.x` phase, any breaking change must be called out explicitly in
@@ -49,6 +48,10 @@ python -m pip install --upgrade pip
 python -m pip install -e '.[serial,coap,eltakotool]'
 python -m pip install pytest build wheel
 ```
+
+The CoAP extra requires a current `aiocoap` release. The project declares
+`aiocoap >= 0.4.17, < 1`; the obsolete `0.4a1` release is incompatible with
+modern Python because it uses the removed `asyncio.coroutine` API.
 
 Run the tests and static checks:
 

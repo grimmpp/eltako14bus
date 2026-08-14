@@ -2,6 +2,17 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## Unreleased
+
+### Fixed
+
+- Updated the CoAP extra from obsolete `aiocoap 0.4a1` to a Python 3.10–3.14
+  compatible release range and made the optional CoAP import lazy.
+- Fixed CI push coverage for the repository's `master` branch.
+- Added clean source-archive manifests and release-time package-version checks.
+- Removed deprecated setuptools `tests_require` metadata and the deprecated
+  license classifier warning.
+
 ## 1.0.0
 
 ### Added

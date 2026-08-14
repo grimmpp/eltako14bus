@@ -29,6 +29,12 @@ jobs:
       - name: Run tests
         run: python -m pytest -q
 
+      - name: Check package version matches release tag
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          python -c 'import importlib.metadata as m, os; expected = os.environ["RELEASE_TAG"].removeprefix("v"); actual = m.version("eltako14bus"); assert actual == expected, f"{actual=} != {expected=}"'
+
       - name: Compile sources
         run: python -m compileall -q eltakobus tests eltakotool.py
 
