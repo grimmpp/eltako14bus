@@ -6,6 +6,12 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
+- Portable gateway constants, passive serial-port scanning, protocol identity
+  parsers, and reusable discovery/memory diagnostics in `eltakobus.const`,
+  `eltakobus.gateway_scan`, `eltakobus.gateway_identity`, and
+  `eltakobus.diagnostics`.
+- Hardware-independent unit tests for the new gateway helpers.
+
 - Corrected the project licensing to the original LGPLv3-or-later terms,
   preserved the accompanying GPLv3 text required by LGPLv3, and clarified
   original and current author attribution.

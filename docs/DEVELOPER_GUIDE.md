@@ -55,6 +55,11 @@ The repository's `requirements.txt` is a convenient development dependency
 list, but the authoritative transport-specific package definitions are in
 `setup.py`.
 
+The core package keeps CoAP and YAML-backed device helpers optional at import
+time. This means message parsing, passive port discovery, and identity parsing
+can be used in a minimal installation; install the corresponding extras before
+using `CoAPInterface` or YAML device helpers.
+
 ## Architecture
 
 The public package re-exports the main modules from `eltakobus.__init__`, so
@@ -209,6 +214,40 @@ be processed.
 The older `RS485SerialInterface` remains in the source tree for compatibility.
 New integrations should use V2 unless they specifically need the legacy
 asyncio protocol lifecycle.
+
+## Gateway discovery and diagnostics
+
+The library also contains the reusable parts of the standalone gateway tools
+from the Home Assistant Eltako integration. `scan_serial_ports()` performs a
+passive scan and returns `SerialPortInfo` objects with pyserial descriptors,
+stable `/dev/serial/by-id` links, and non-authoritative device-type hints. It
+never opens or writes a port:
+
+```python
+from eltakobus.gateway_scan import scan_serial_ports
+
+for port in scan_serial_ports():
+    print(port.device, port.suggested_device_types, port.by_id)
+```
+
+Use `eltakobus.gateway_identity` for the protocol-level pieces of an active
+probe: `fam_usb_base_id_request()`, `parse_fam_usb_base_id()`, and
+`parse_version_response()`. `async_read_identity()` can read a FAM-USB identity
+through an already-owned `BusInterface`; it does not open a second serial
+handle. An active probe must not run against a port that is
+already owned by a running gateway because opening it can interrupt reception.
+The passive scan is therefore intentionally separate from identity reading.
+
+For command-line tools and test runners, `eltakobus.diagnostics` provides
+small, serializable building blocks. `probe_devices()` records successful
+discoveries and timeouts per address, while `read_memory_test()` reads a full
+memory image and returns a report instead of aborting a complete diagnostic
+run. Both work with a real `BusInterface` and with replay/fake buses.
+
+The Home Assistant-specific websocket commands, entity constants, config-flow
+keys, and UI state from `home-assistant-eltako` are deliberately not part of
+this library. They depend on Home Assistant and would make the core package
+harder to embed.
 
 ## Using the CoAP backend
 

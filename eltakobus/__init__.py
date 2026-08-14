@@ -13,7 +13,22 @@ from .bus import *
 from .serial import *
 from .esp2_gateway import *
 from .esp3 import *
-from .coap import *
-from .device import *
+# Keep transport/tool extras optional: passive gateway scanning and message parsing should also
+# work in a minimal installation without aiocoap or PyYAML.
+try:
+    from .coap import *
+except ImportError:  # pragma: no cover - exercised in minimal installations
+    pass
+try:
+    from .device import *
+except ImportError:  # pragma: no cover - exercised in minimal installations
+    pass
 from . import locking
 from . import eep
+
+# Optional protocol-neutral discovery and diagnostics helpers.  Importing these modules does
+# not open hardware; applications decide when a scan or probe is safe.
+from .const import *
+from .gateway_scan import *
+from .gateway_identity import *
+from .diagnostics import *
