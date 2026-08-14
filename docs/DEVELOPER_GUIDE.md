@@ -529,12 +529,16 @@ before using them.
 ## Testing without hardware
 
 The `tests/` directory contains offline unit tests covering EEP construction
-(`generic_eep_test.py`), both serial transports (`serial_test.py`), a replay of
+and validation (`generic_eep_test.py`, `eep_validation_test.py`,
+`eltako_eep_test.py`), the independent device catalog and teach-in mapping,
+both serial transports (`serial_test.py`), a replay of
 a recorded hardware session (`replay_bus_test.py`), and `eltakotool.py`'s
 argument parsing and `fakefam` fallback logic (`eltakotool_test.py`). The
 package import currently loads the serial and CoAP backends, and
-`eltakotool.py` additionally imports `xdg.BaseDirectory`, so install both
-extras before running the suite. Then use the standard library test runner;
+`eltakotool.py` additionally imports `xdg.BaseDirectory`, and the device/replay
+tests use `PyYAML` through the device model, so install the project extras before
+running the suite. These are project extras only; Home Assistant is not required.
+Then use the standard library test runner;
 `pytest` itself is not required:
 
 ```sh
@@ -637,6 +641,34 @@ and `size`, and implement only operations supported by the hardware. Register
 the class in the `known_objects` list in `device.py`; the list is sorted so
 more specific matches should be preferred. Test discovery with a synthetic
 `EltakoDiscoveryReply` and use a fake bus for memory and command methods.
+
+### Device catalog and Eltako teach-in
+
+`eltakobus.device_catalog` is a static, dependency-free mapping from product
+names to received EEPs, sender EEPs, address spans, and optional configuration
+metadata. It is useful for discovery and diagnostics, but it does not identify
+devices by itself:
+
+```python
+from eltakobus.device_catalog import entries_for_hw_type, find_hw_type
+
+primary = find_hw_type("FSR14-4x")
+for profile in entries_for_hw_type("FTS14EM"):
+    print(profile["eep"], profile["description"])
+```
+
+Use `eltakobus.teach_in` for the Eltako-specific sender teach-in telegrams:
+
+```python
+from eltakobus.teach_in import build_teach_in_message
+
+message = build_teach_in_message(bytes.fromhex("01020304"), "A5-38-08")
+```
+
+Only documented payloads are generated; unknown EEPs raise `ValueError` rather
+than receiving a guessed command. Both modules contain plain Python data and
+depend only on other `eltakobus` modules. The compatibility tests verify that
+the package can be imported in a process without Home Assistant installed.
 
 ### New transport
 

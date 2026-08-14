@@ -11,6 +11,19 @@ This project adheres to [Semantic Versioning](http://semver.org/).
   `eltakobus.gateway_scan`, `eltakobus.gateway_identity`, and
   `eltakobus.diagnostics`.
 - Hardware-independent unit tests for the new gateway helpers.
+- Added EEP `A5-02-05` for pure temperature sensors such as STM 330, including
+  the official 0 to 40 °C scaling, metadata, validation, and regression tests.
+- Added EEP `A5-07-03` for occupancy, supply voltage, and 10-bit illumination.
+- Added the missing standard profiles `A5-02-01` through `A5-02-1B` (where
+  applicable), `A5-02-20`, `A5-02-30`, `A5-06-03`, and `A5-07-02` from EEP
+  2.6.7, including their documented bit layouts and physical ranges.
+- Added EEP `F6-05-02` for smoke-detector alarm and low-battery status.
+- Added Eltako catalogue profiles `A5-06-02`, `A5-09-05`, `A5-14-09`,
+  `A5-14-0A`, `A5-20-04`, and
+  `F6-05-01`, and aligned `A5-02-05` and `A5-30-03` with Eltako's inverted
+  temperature scaling and status markers.
+- Documented triage of upstream Home Assistant Eltako issues and the boundary
+  between library-level and Home-Assistant-specific changes.
 
 - Corrected the project licensing to the original LGPLv3-or-later terms,
   preserved the accompanying GPLv3 text required by LGPLv3, and clarified
@@ -32,6 +45,20 @@ This project adheres to [Semantic Versioning](http://semver.org/).
   standards-compliant seven-byte RADIO_ERP1 optional data, defensive response
   conversion, and logging/ignoring of malformed ESP3 packets.
 - Added structured metadata for all registered EEP profiles.
+- Added the HA-independent `eltakobus.device_catalog` with the Eltako/EnOcean
+  device list, gateway descriptions, receive/sender EEP mappings, PCT14
+  programming hints, address counts, and device-name normalization.
+- Added catalog lookup helpers (`find_hw_type`, `describe_gateway_type`,
+  `devices_for_eep`, and `eep_device_mapping`) with unit tests.
+- Added HA-independent Eltako teach-in support with the documented sender
+  payloads, outgoing 4BS message builder, and links from sender EEPs to
+  catalog devices in `eltakobus.teach_in`.
+- Added dedicated Eltako telegram tests for FTF65S, FHD65SB, FLT58, FKS-H,
+  FHMB/FRWB, FFGB/mTronic, FWS81, FRW, gateway switching, and shutter
+  status/command markers.
+- Added Home Assistant integration compatibility tests covering all imported
+  EEP classes, constructor contracts, enum helpers, and common outgoing
+  telegrams.
 - Added `EEPMetadata` and `EEPFieldMetadata` with names, descriptions, ORG
   identifiers, units, logical value ranges, data types, and enum values.
 - Added `EEP.get_metadata()` and JSON-friendly `EEPMetadata.as_dict()`.
@@ -49,6 +76,11 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 - Fixed A5-10-03 target-temperature decoding and encoding to honor the
   documented 8 °C lower bound.
+- Corrected the A5-06-03/A5-07-03 10-bit illumination layout: DB2 contains
+  the two most significant bits and DB1 the eight least significant bits.
+- Corrected A5-04-03 to use the official humidity-in-DB3 and 10-bit
+  temperature-in-DB2/DB1 layout; added an independent OpenOcean comparison
+  report and raw-payload regression coverage.
 - `eltakotool.py --serial_lib_version 1` no longer crashes with a
   `NameError`: the option now parses as `int`, matching the `--baud_rate`
   option, which previously compared a string against `1`/`2` and left `bus`

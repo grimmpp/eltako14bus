@@ -30,6 +30,12 @@ locking, caching, the command-line tool, offline testing, and extension points.
 The [release guide](docs/RELEASING.md) documents version selection, local
 verification, tagging, GitHub Releases, and PyPI publication.
 
+The independent [device catalog](docs/DEVICE_CATALOG.md) documents device-to-EEP
+metadata and lookup helpers. [Teach-in support](docs/TEACH_IN.md) describes the
+Eltako-specific sender telegrams, and [compatibility tests](docs/HOME_ASSISTANT_COMPATIBILITY.md)
+protect the public API used by external applications without adding a dependency
+on Home Assistant.
+
 Quick start
 -----------
 

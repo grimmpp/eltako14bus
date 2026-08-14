@@ -646,6 +646,51 @@ class _CO2TemperatureHumiditySensor(EEP):
 class A5_09_04(_CO2TemperatureHumiditySensor):
     """CO2, Temperature and Humidity Sensor"""
 
+
+class _EltakoVOCSensor(EEP):
+    """Eltako FLT58 VOC telegram (the Eltako A5-09-05 variant)."""
+    metadata = EEPMetadata("", "VOC sensor",
+        "Eltako VOC concentration from 0 to 500 (A5-09-05 telegram).", 0x07, (
+        EEPFieldMetadata("concentration", "VOC concentration.", None, (0.0, 500.0)),
+        EEPFieldMetadata("profile_marker", "Eltako profile marker (DB1/DB0).", data_type="integer", value_range=(0, 255)),
+    ))
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        raw = (msg.data[0] << 8) | msg.data[1]
+        concentration = raw / 65535.0 * 500.0
+        return cls(concentration, msg.data[2], msg.data[3])
+
+    def encode_message(self, address):
+        if not 0.0 <= self.concentration <= 500.0:
+            raise ValueError("VOC concentration must be between 0 and 500")
+        raw = int(self.concentration / 500.0 * 65535.0)
+        data = bytearray((raw >> 8, raw & 0xFF, self.profile_marker, self.profile_type))
+        return Regular4BSMessage(address, 0x00, data, True)
+
+    @property
+    def concentration(self):
+        return self._concentration
+
+    @property
+    def profile_marker(self):
+        return self._profile_marker
+
+    @property
+    def profile_type(self):
+        return self._profile_type
+
+    def __init__(self, concentration=0.0, profile_marker=0x1B, profile_type=0x0A):
+        self._concentration = concentration
+        self._profile_marker = profile_marker
+        self._profile_type = profile_type
+
+
+class A5_09_05(_EltakoVOCSensor):
+    """Eltako VOC sensor telegram used by FLT58."""
+
 # ======================================
 # MARK: - Central Command
 # ======================================
@@ -1041,6 +1086,70 @@ class _HeatingCoolingHumidity(EEP):
 class A5_10_12(_HeatingCoolingHumidity):
     """Temperature Controller Command"""
 
+
+class _ValveAndTemperatureSensor(EEP):
+    """Eltako FKS-H A5-20-04 status telegram."""
+    metadata = EEPMetadata("", "Valve and temperature sensor",
+        "Valve position with supply/target or error-dependent temperature data.", 0x07, (
+        EEPFieldMetadata("valve_position", "Valve position.", "%", (0.0, 100.0)),
+        EEPFieldMetadata("temperature", "Temperature selected by the status marker.", "°C"),
+        EEPFieldMetadata("status", "Eltako status marker (DB0).", data_type="integer", value_range=(0, 255)),
+        EEPFieldMetadata("battery_empty", "Battery-empty error status.", data_type="boolean", value_range=(0, 1)),
+    ))
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        status = msg.data[3]
+        valve_position = msg.data[0] / 255.0 * 100.0
+        if status == 0x08:
+            temperature = 20.0 + msg.data[1] / 255.0 * 60.0
+        elif status == 0x0A:
+            temperature = 10.0 + msg.data[1] / 255.0 * 20.0
+        else:
+            temperature = msg.data[1]
+        return cls(valve_position, temperature, status)
+
+    def encode_message(self, address):
+        if not 0.0 <= self.valve_position <= 100.0:
+            raise ValueError("Valve position must be between 0 and 100 percent")
+        if self.status == 0x08:
+            raw_temperature = (self.temperature - 20.0) / 60.0 * 255.0
+        elif self.status == 0x0A:
+            raw_temperature = (self.temperature - 10.0) / 20.0 * 255.0
+        else:
+            raw_temperature = self.temperature
+        if not 0.0 <= raw_temperature <= 255.0:
+            raise ValueError("Temperature is outside the range for the selected status")
+        data = bytearray((int(self.valve_position / 100.0 * 255.0), int(raw_temperature), 0, self.status))
+        return Regular4BSMessage(address, 0x00, data, True)
+
+    @property
+    def valve_position(self):
+        return self._valve_position
+
+    @property
+    def temperature(self):
+        return self._temperature
+
+    @property
+    def status(self):
+        return self._status
+
+    @property
+    def battery_empty(self):
+        return self.status == 0x09 and self.temperature == 0x12
+
+    def __init__(self, valve_position=0.0, temperature=0.0, status=0x08):
+        self._valve_position = valve_position
+        self._temperature = temperature
+        self._status = status
+
+
+class A5_20_04(_ValveAndTemperatureSensor):
+    """Eltako FKS-H valve and temperature telegram."""
+
 # ======================================
 # MARK: - Weather station
 # ======================================
@@ -1320,19 +1429,26 @@ class _TemperatureAndHumiditySensor3(EEP):
 
         telegram_type = (msg.data[3] & 0x01)
 
-        # 0 .. 100%
+        # A5-04-03 uses DB3 for humidity and DB2.1..DB1.0 for the
+        # 10-bit temperature value (DB2 contains the two MSBs).
         humidity = (msg.data[0] / cls.usr) * 100.0
-        # -20°C .. +60°C
-        raw_temp = msg.data[1] * 265 + msg.data[2]
-        temperature = ((raw_temp / 1024) * (cls.temp_max - cls.temp_min)) + cls.temp_min
+        raw_temp = ((msg.data[1] & 0x03) << 8) | msg.data[2]
+        temperature = ((raw_temp / 1023.0) * (cls.temp_max - cls.temp_min)) + cls.temp_min
 
         return cls(temperature,humidity,learn_button, telegram_type)
 
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
-        data[0] = 0x00
-        data[1] = int((self.humidity / 100.0) * self.usr)
-        data[2] = int((self.current_temperature / (self.temp_max - self.temp_min)) * self.usr)
+        if not 0.0 <= self.humidity <= 100.0:
+            raise ValueError("Humidity must be between 0 and 100 %")
+        if not self.temp_min <= self.current_temperature <= self.temp_max:
+            raise ValueError(
+                f"Temperature must be between {self.temp_min} and {self.temp_max} °C")
+        raw_temp = round((self.current_temperature - self.temp_min)
+                         / (self.temp_max - self.temp_min) * 1023)
+        data[0] = int((self.humidity / 100.0) * self.usr)
+        data[1] = (raw_temp >> 8) & 0x03
+        data[2] = raw_temp & 0xFF
         data[3] = (self.learn_button << 3) + self.telegram_type
         
         status = 0x00
@@ -1364,6 +1480,400 @@ class _TemperatureAndHumiditySensor3(EEP):
 
 class A5_04_03(_TemperatureAndHumiditySensor3):
     """Temperature and Humidity Sensor"""
+
+
+class _TemperatureSensor(EEP):
+    """Pure temperature sensor using the A5-02 linear temperature encoding."""
+    metadata = EEPMetadata("", "Temperature sensor",
+        "Pure temperature sensor with a 0 to 40 degree Celsius range.", 0x07, (
+        EEPFieldMetadata("current_temperature", "Measured temperature.", "°C", (0.0, 40.0)),
+        EEPFieldMetadata("profile_marker", "Eltako profile marker (DB0).", value_range=(0, 255), data_type="integer"),
+    ))
+    temp_min = 0.0
+    temp_max = 40.0
+    usr = 255.0
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+
+        temperature = cls.temp_min + ((cls.usr - msg.data[2]) / cls.usr) * (cls.temp_max - cls.temp_min)
+        return cls(temperature, msg.data[3])
+
+    def encode_message(self, address):
+        if not self.temp_min <= self.current_temperature <= self.temp_max:
+            raise ValueError(
+                f"Temperature must be between {self.temp_min} and {self.temp_max} °C")
+
+        data = bytearray(4)
+        data[2] = int((self.temp_max - self.current_temperature)
+                      / (self.temp_max - self.temp_min) * self.usr)
+        data[3] = self.profile_marker
+        return Regular4BSMessage(address, 0x00, data, True)
+
+    @property
+    def current_temperature(self):
+        return self._temperature
+
+    @property
+    def profile_marker(self):
+        return self._profile_marker
+
+    def __init__(self, temperature: float = 0.0, profile_marker: int = 0x0F):
+        self._temperature = temperature
+        self._profile_marker = profile_marker
+
+
+class A5_02_05(_TemperatureSensor):
+    """Temperature Sensor, 0 to 40 °C (e.g. EnOcean STM 330)."""
+
+
+# The A5-02 family uses the same 8-bit linear field (DB1), but each profile
+# declares a different physical range.  Keep the concrete profile names
+# available through ``EEP.find()`` instead of making callers duplicate this
+# mapping themselves.
+_A5_02_RANGES = {
+    "A5_02_01": (-40.0, 0.0),
+    "A5_02_02": (-30.0, 10.0),
+    "A5_02_03": (-20.0, 20.0),
+    "A5_02_04": (-10.0, 30.0),
+    "A5_02_06": (10.0, 50.0),
+    "A5_02_07": (20.0, 60.0),
+    "A5_02_08": (30.0, 70.0),
+    "A5_02_09": (40.0, 80.0),
+    "A5_02_0A": (50.0, 90.0),
+    "A5_02_0B": (60.0, 100.0),
+    "A5_02_10": (-60.0, 20.0),
+    "A5_02_11": (-50.0, 30.0),
+    "A5_02_12": (-40.0, 40.0),
+    "A5_02_13": (-30.0, 50.0),
+    "A5_02_14": (-20.0, 60.0),
+    "A5_02_15": (-10.0, 70.0),
+    "A5_02_16": (0.0, 80.0),
+    "A5_02_17": (10.0, 90.0),
+    "A5_02_18": (20.0, 100.0),
+    "A5_02_19": (30.0, 110.0),
+    "A5_02_1A": (40.0, 120.0),
+    "A5_02_1B": (50.0, 130.0),
+}
+
+for _profile_name, (_minimum, _maximum) in _A5_02_RANGES.items():
+    globals()[_profile_name] = type(
+        _profile_name,
+        (_TemperatureSensor,),
+        {
+            "temp_min": _minimum,
+            "temp_max": _maximum,
+            "metadata": _TemperatureSensor.metadata._replace(
+                fields=(EEPFieldMetadata(
+                    "current_temperature", "Measured temperature.", "°C",
+                    (_minimum, _maximum)),
+                    _TemperatureSensor.metadata.field("profile_marker"))),
+            "__doc__": f"Temperature sensor, {_minimum:g} to {_maximum:g} °C.",
+        },
+    )
+
+
+class _TemperatureSensor10Bit(EEP):
+    """A5-02 10-bit temperature encoding (DB2.1..DB1.0)."""
+    metadata = EEPMetadata("", "10-bit temperature sensor",
+        "Temperature sensor using the A5-02 10-bit linear encoding.", 0x07, (
+        EEPFieldMetadata("current_temperature", "Measured temperature.", "°C"),
+    ))
+    temp_min = 0.0
+    temp_max = 40.0
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        raw = ((msg.data[1] & 0x03) << 8) | msg.data[2]
+        temperature = cls.temp_min + (1023 - raw) / 1023 * (cls.temp_max - cls.temp_min)
+        return cls(temperature)
+
+    def encode_message(self, address):
+        if not self.temp_min <= self.current_temperature <= self.temp_max:
+            raise ValueError(
+                f"Temperature must be between {self.temp_min} and {self.temp_max} °C")
+        raw = round((self.temp_max - self.current_temperature) /
+                    (self.temp_max - self.temp_min) * 1023)
+        data = bytearray(4)
+        data[1] = (raw >> 8) & 0x03
+        data[2] = raw & 0xFF
+        return Regular4BSMessage(address, 0x00, data, True)
+
+    @property
+    def current_temperature(self):
+        return self._temperature
+
+    def __init__(self, temperature=0.0):
+        self._temperature = temperature
+
+
+class A5_02_20(_TemperatureSensor10Bit):
+    """10-bit temperature sensor, -10 to +41.2 °C."""
+    temp_min = -10.0
+    temp_max = 41.2
+    metadata = _TemperatureSensor10Bit.metadata._replace(fields=(
+        EEPFieldMetadata("current_temperature", "Measured temperature.", "°C", (-10.0, 41.2)),
+    ))
+
+
+class A5_02_30(_TemperatureSensor10Bit):
+    """10-bit temperature sensor, -40 to +62.3 °C."""
+    temp_min = -40.0
+    temp_max = 62.3
+    metadata = _TemperatureSensor10Bit.metadata._replace(fields=(
+        EEPFieldMetadata("current_temperature", "Measured temperature.", "°C", (-40.0, 62.3)),
+    ))
+
+
+class _OccupancySensorWithIllumination(EEP):
+    """A5-07 occupancy sensor with supply voltage and 10-bit illumination."""
+    metadata = EEPMetadata("", "Occupancy and illumination sensor",
+        "Occupancy sensor with super-capacitor voltage and 0 to 1000 lx illumination.", 0x07, (
+        EEPFieldMetadata("supply_voltage", "Supply or super-capacitor voltage.", "V", (0.0, 5.0)),
+        EEPFieldMetadata("illumination", "Measured illumination.", "lx", (0.0, 1000.0)),
+        EEPFieldMetadata("motion_detected", "Whether motion is detected.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("error_code", "Supply voltage error code, if present.", value_range=(0, 255), data_type="integer"),
+    ))
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+
+        # ESP2 data is exposed as DB3..DB0 by Regular4BSMessage.  A5-07-03
+        # places supply voltage in DB3, illumination in DB2.7..DB1.6 and
+        # occupancy in DB0.7.
+        supply_raw = msg.data[0]
+        error_code = supply_raw if supply_raw >= 251 else 0
+        supply_voltage = min(supply_raw, 250) / 250.0 * 5.0
+        illumination_raw = (msg.data[1] << 2) | (msg.data[2] >> 6)
+        illumination = min(illumination_raw, 1000)
+        motion_detected = (msg.data[3] & 0x80) >> 7
+        return cls(supply_voltage, illumination, motion_detected, error_code)
+
+    def encode_message(self, address):
+        if not 0.0 <= self.supply_voltage <= 5.0:
+            raise ValueError("Supply voltage must be between 0 and 5 V")
+        if not 0.0 <= self.illumination <= 1000.0:
+            raise ValueError("Illumination must be between 0 and 1000 lx")
+
+        supply_raw = min(250, int(self.supply_voltage / 5.0 * 250))
+        illumination_raw = int(self.illumination)
+        data = bytearray(4)
+        data[0] = supply_raw
+        data[1] = (illumination_raw >> 2) & 0xFF
+        data[2] = (illumination_raw & 0x03) << 6
+        data[3] = (int(bool(self.motion_detected)) << 7)
+        return Regular4BSMessage(address, 0x00, data, True)
+
+    @property
+    def supply_voltage(self):
+        return self._supply_voltage
+
+    @property
+    def illumination(self):
+        return self._illumination
+
+    @property
+    def motion_detected(self):
+        return self._motion_detected
+
+    @property
+    def error_code(self):
+        return self._error_code
+
+    def __init__(self, supply_voltage=0.0, illumination=0.0, motion_detected=0, error_code=0):
+        self._supply_voltage = supply_voltage
+        self._illumination = illumination
+        self._motion_detected = motion_detected
+        self._error_code = error_code
+
+
+class A5_07_03(_OccupancySensorWithIllumination):
+    """Occupancy with supply voltage monitor and 10-bit illumination."""
+
+
+class _OccupancySensorWithRequiredSupply(EEP):
+    """Standard A5-07-02 occupancy telegram."""
+    metadata = EEPMetadata("", "Occupancy sensor with supply voltage",
+        "Occupancy sensor with required supply-voltage monitoring.", 0x07, (
+        EEPFieldMetadata("supply_voltage", "Supply or super-capacitor voltage.", "V", (0.0, 5.0)),
+        EEPFieldMetadata("motion_detected", "Whether motion is detected.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("error_code", "Supply-voltage error code, if present.", value_range=(0, 255), data_type="integer"),
+    ))
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        supply_raw = msg.data[0]
+        error_code = supply_raw if supply_raw >= 251 else 0
+        supply_voltage = min(supply_raw, 250) / 250.0 * 5.0
+        motion_detected = bool(msg.data[3] & 0x80)
+        return cls(supply_voltage, motion_detected, error_code)
+
+    def encode_message(self, address):
+        if not 0.0 <= self.supply_voltage <= 5.0:
+            raise ValueError("Supply voltage must be between 0 and 5 V")
+        data = bytearray(4)
+        data[0] = min(250, int(self.supply_voltage / 5.0 * 250))
+        data[3] = int(bool(self.motion_detected)) << 7
+        return Regular4BSMessage(address, 0x00, data, True)
+
+    @property
+    def supply_voltage(self):
+        return self._supply_voltage
+
+    @property
+    def motion_detected(self):
+        return self._motion_detected
+
+    @property
+    def error_code(self):
+        return self._error_code
+
+    def __init__(self, supply_voltage=0.0, motion_detected=False, error_code=0):
+        self._supply_voltage = supply_voltage
+        self._motion_detected = motion_detected
+        self._error_code = error_code
+
+
+class A5_07_02(_OccupancySensorWithRequiredSupply):
+    """Occupancy with supply voltage monitor (standard EEP A5-07-02)."""
+
+
+class _EltakoWindowContact(EEP):
+    """Eltako 4BS window contact status used by FFGB and mTronic."""
+    metadata = EEPMetadata("", "Window contact",
+        "Window state with supply voltage and optional alarm flag.", 0x07, (
+        EEPFieldMetadata("supply_voltage", "Supply voltage.", "V", (0.0, 5.0)),
+        EEPFieldMetadata("window_state", "Window position.", data_type="enum",
+                         values={0x08: "closed", 0x0A: "tilted", 0x0E: "open"}),
+        EEPFieldMetadata("alarm", "Tamper or alarm flag.", data_type="boolean", value_range=(0, 1)),
+    ))
+    CLOSED = 0x08
+    TILTED = 0x0A
+    OPEN = 0x0E
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        status = msg.data[3]
+        return cls(msg.data[0] / 250.0 * 5.0, status & 0xFE, status & 0x01)
+
+    def encode_message(self, address):
+        if not 0.0 <= self.supply_voltage <= 5.0:
+            raise ValueError("Supply voltage must be between 0 and 5 V")
+        if self.window_state not in (self.CLOSED, self.TILTED, self.OPEN):
+            raise ValueError("Window state must be 0x08, 0x0A, or 0x0E")
+        data = bytearray((int(self.supply_voltage / 5.0 * 250.0), 0, 0,
+                          self.window_state | int(bool(self.alarm))))
+        return Regular4BSMessage(address, 0x00, data, True)
+
+    @property
+    def supply_voltage(self): return self._supply_voltage
+    @property
+    def window_state(self): return self._window_state
+    @property
+    def alarm(self): return self._alarm
+
+    def __init__(self, supply_voltage=0.0, window_state=CLOSED, alarm=0):
+        self._supply_voltage = supply_voltage
+        self._window_state = window_state
+        self._alarm = alarm
+
+
+class A5_14_09(_EltakoWindowContact):
+    """Eltako FFGB window contact status."""
+
+
+class A5_14_0A(_EltakoWindowContact):
+    """Eltako mTronic window contact status with alarm flag."""
+
+
+class _SmokeDetector(EEP):
+    """RPS smoke detector status used by Eltako FRW and compatible devices."""
+    metadata = EEPMetadata("", "Smoke detector",
+        "Smoke detector alarm and low-battery status telegram.", 0x05, (
+        EEPFieldMetadata("status", "Raw smoke detector status.", value_range=(0, 255), data_type="integer"),
+        EEPFieldMetadata("smoke_alarm", "Whether the smoke alarm is active.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("low_battery", "Whether the low-battery status is reported.", data_type="boolean", value_range=(0, 1)),
+    ))
+    NORMAL = 0x00
+    ALARM = 0x10
+    LOW_BATTERY = 0x30
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x05:
+            raise WrongOrgError
+        return cls(msg.data[0])
+
+    def encode_message(self, address):
+        return RPSMessage(address, 0x30, bytes((self.status,)), True)
+
+    @property
+    def status(self):
+        return self._status
+
+    @property
+    def smoke_alarm(self):
+        return self.status == self.ALARM
+
+    @property
+    def low_battery(self):
+        return self.status == self.LOW_BATTERY
+
+    def __init__(self, status=0):
+        if not 0 <= status <= 255:
+            raise ValueError("Smoke detector status must be a byte")
+        self._status = status
+
+
+class F6_05_02(_SmokeDetector):
+    """Smoke detector status (e.g. Eltako FRW)."""
+
+
+class _WaterLeakageDetector(EEP):
+    """Eltako FWS81 water-leakage RPS status telegram."""
+    metadata = EEPMetadata("", "Water leakage detector",
+        "Water/no-water status telegram from an Eltako water detector.", 0x05, (
+        EEPFieldMetadata("status", "Raw water detector status.", value_range=(0, 255), data_type="integer"),
+        EEPFieldMetadata("water_detected", "Whether water is detected.", data_type="boolean", value_range=(0, 1)),
+    ))
+    WATER = 0x30
+    NO_WATER = 0x20
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x05:
+            raise WrongOrgError
+        return cls(msg.data[0])
+
+    def encode_message(self, address):
+        return RPSMessage(address, 0x30, bytes((self.status,)), True)
+
+    @property
+    def status(self):
+        return self._status
+
+    @property
+    def water_detected(self):
+        return self.status == self.WATER
+
+    def __init__(self, status=NO_WATER):
+        if not 0 <= status <= 255:
+            raise ValueError("Water detector status must be a byte")
+        self._status = status
+
+
+class F6_05_01(_WaterLeakageDetector):
+    """Water leakage sensor (e.g. Eltako FWS81)."""
 
 
 # ======================================
@@ -1708,6 +2218,106 @@ class _BrightnessTwilightSensor(EEP):
 class A5_06_01(_BrightnessTwilightSensor):
     """Brightness Twilight Sensor"""
 
+
+class _EltakoLightVoltageSensor(EEP):
+    """Eltako FHD65SB variant documented as A5-06-02."""
+    metadata = EEPMetadata("", "Light and supply-voltage sensor",
+        "Eltako illumination and supply-voltage telegram, 0 to 1020 lx and 0 to 5.1 V.", 0x07, (
+        EEPFieldMetadata("supply_voltage", "Supply voltage.", "V", (0.0, 5.1)),
+        EEPFieldMetadata("illumination", "Illumination.", "lx", (0.0, 1020.0)),
+        EEPFieldMetadata("profile_marker", "Eltako profile marker (DB0).", data_type="integer", value_range=(0, 255)),
+    ))
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        return cls(msg.data[0] / 255.0 * 5.1, msg.data[1] / 255.0 * 1020.0, msg.data[3])
+
+    def encode_message(self, address):
+        if not 0.0 <= self.supply_voltage <= 5.1:
+            raise ValueError("Supply voltage must be between 0 and 5.1 V")
+        if not 0.0 <= self.illumination <= 1020.0:
+            raise ValueError("Illumination must be between 0 and 1020 lx")
+        data = bytearray((int(self.supply_voltage / 5.1 * 255.0),
+                          int(self.illumination / 1020.0 * 255.0), 0, self.profile_marker))
+        return Regular4BSMessage(address, 0x00, data, True)
+
+    @property
+    def supply_voltage(self):
+        return self._supply_voltage
+
+    @property
+    def illumination(self):
+        return self._illumination
+
+    @property
+    def profile_marker(self):
+        return self._profile_marker
+
+    def __init__(self, supply_voltage=0.0, illumination=0.0, profile_marker=0x0F):
+        self._supply_voltage = supply_voltage
+        self._illumination = illumination
+        self._profile_marker = profile_marker
+
+
+class A5_06_02(_EltakoLightVoltageSensor):
+    """Eltako FHD65SB light and supply-voltage telegram."""
+
+
+class _LightSensor10Bit(EEP):
+    """Standard A5-06-03 10-bit illumination sensor."""
+    metadata = EEPMetadata("", "10-bit light sensor",
+        "Light sensor with 1 lx resolution and a 0 to 1000 lx range.", 0x07, (
+        EEPFieldMetadata("supply_voltage", "Supply or super-capacitor voltage.", "V", (0.0, 5.0)),
+        EEPFieldMetadata("illumination", "Measured illumination.", "lx", (0.0, 1000.0)),
+        EEPFieldMetadata("error_code", "Supply-voltage error code, if present.", value_range=(0, 255), data_type="integer"),
+    ))
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        supply_raw = msg.data[0]
+        error_code = supply_raw if supply_raw >= 251 else 0
+        supply_voltage = min(supply_raw, 250) / 250.0 * 5.0
+        illumination_raw = (msg.data[1] << 2) | (msg.data[2] >> 6)
+        illumination = min(illumination_raw, 1000)
+        return cls(supply_voltage, illumination, error_code)
+
+    def encode_message(self, address):
+        if not 0.0 <= self.supply_voltage <= 5.0:
+            raise ValueError("Supply voltage must be between 0 and 5 V")
+        if not 0.0 <= self.illumination <= 1000.0:
+            raise ValueError("Illumination must be between 0 and 1000 lx")
+        illumination_raw = int(self.illumination)
+        data = bytearray(4)
+        data[0] = min(250, int(self.supply_voltage / 5.0 * 250))
+        data[1] = (illumination_raw >> 2) & 0xFF
+        data[2] = (illumination_raw & 0x03) << 6
+        return Regular4BSMessage(address, 0x00, data, True)
+
+    @property
+    def supply_voltage(self):
+        return self._supply_voltage
+
+    @property
+    def illumination(self):
+        return self._illumination
+
+    @property
+    def error_code(self):
+        return self._error_code
+
+    def __init__(self, supply_voltage=0.0, illumination=0.0, error_code=0):
+        self._supply_voltage = supply_voltage
+        self._illumination = illumination
+        self._error_code = error_code
+
+
+class A5_06_03(_LightSensor10Bit):
+    """10-bit light sensor with 0 to 1000 lx range."""
+
 class _DigitalInputAndBattery(EEP):
     """Digital Input regarding A5-30-01"""
     metadata = EEPMetadata("", "Digital input with battery status",
@@ -1775,14 +2385,11 @@ class A5_30_01(_DigitalInputAndBattery):
 class _DigitalInputsAndTemperature(EEP):
     """4 Digital Inputs and Temperature"""
     metadata = EEPMetadata("", "Four digital inputs and temperature",
-        "Four digital input bits, temperature and wake status.", 0x07, (
+        "Eltako FHMB/FRWB temperature and smoke alarm telegram.", 0x07, (
         EEPFieldMetadata("temperature", "Measured temperature.", "°C", (0.0, 40.0)),
-        EEPFieldMetadata("digital_input_0", "Digital input 0.", data_type="boolean", value_range=(0, 1)),
-        EEPFieldMetadata("digital_input_1", "Digital input 1.", data_type="boolean", value_range=(0, 1)),
-        EEPFieldMetadata("digital_input_2", "Digital input 2.", data_type="boolean", value_range=(0, 1)),
-        EEPFieldMetadata("digital_input_3", "Digital input 3.", data_type="boolean", value_range=(0, 1)),
-        EEPFieldMetadata("status_of_wake", "Wake-up status.", data_type="boolean", value_range=(0, 1)),
-        EEPFieldMetadata("learn_button", "Learn button flag.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("alarm_status", "Eltako alarm marker (0x0F alarm, 0x1F no alarm).", data_type="integer", value_range=(0, 255)),
+        EEPFieldMetadata("alarm", "Whether the alarm is active.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("profile_marker", "Eltako profile marker (DB0).", data_type="integer", value_range=(0, 255)),
     ))
 
     @classmethod
@@ -1790,68 +2397,57 @@ class _DigitalInputsAndTemperature(EEP):
         if msg.org != 0x07:
             raise WrongOrgError
         
-        temperature = msg.data[1] / 255 * 40
-        
-        digital_input_0 = msg.data[2] & 0x01
-        digital_input_1 = (msg.data[2] & 0x02) >> 1
-        digital_input_2 = (msg.data[2] & 0x04) >> 2
-        digital_input_3 = (msg.data[2] & 0x08) >> 3
-        status_of_wake = (msg.data[2] & 0x10) >> 4
-
-        learn_button = (msg.data[3] & 0x08) >> 3
-
-        return cls(temperature, digital_input_0, digital_input_1, digital_input_2, digital_input_3, status_of_wake, learn_button)
+        temperature = (255 - msg.data[1]) / 255 * 40
+        alarm_status = msg.data[2]
+        return cls(temperature, alarm_status, msg.data[3])
     
 
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
         
-        data[1] = int(self._temperature / 40 * 255)
-
-        data[2] += self.digital_input_0
-        data[2] += self.digital_input_1 << 1
-        data[2] += self.digital_input_2 << 2
-        data[2] += self.digital_input_3 << 3
-        data[2] += self.status_of_wake << 4
-
-        data[3] = self.learn_button
+        data[1] = int((255 - self._temperature / 40 * 255))
+        data[2] = self.alarm_status
+        data[3] = self.profile_marker
 
         status = 0x00
         
         return Regular4BSMessage(address, status, data, True)
     
     @property
-    def digital_input_0(self):
-        return self._digital_input_0
-    
-    @property
-    def digital_input_1(self):
-        return self._digital_input_1
-    
-    @property
-    def digital_input_2(self):
-        return self._digital_input_2
-    
-    @property
-    def digital_input_3(self):
-        return self._digital_input_3
-    
-    @property
-    def status_of_wake(self):
-        return self._status_of_wake
-    
-    @property
-    def learn_button(self):
-        return self._learn_button
+    def alarm_status(self):
+        return self._alarm_status
 
-    def __init__(self, temperature, digital_input_0, digital_input_1, digital_input_2, digital_input_3, status_of_wake, learn_button):
+    @property
+    def temperature(self):
+        return self._temperature
+
+    @property
+    def alarm(self):
+        return self.alarm_status == 0x0F
+
+    @property
+    def profile_marker(self):
+        return self._profile_marker
+
+    # Legacy names remain available as aliases for applications that used the
+    # former generic interpretation of this profile.
+    @property
+    def digital_input_0(self): return self.alarm_status & 0x01
+    @property
+    def digital_input_1(self): return (self.alarm_status >> 1) & 0x01
+    @property
+    def digital_input_2(self): return (self.alarm_status >> 2) & 0x01
+    @property
+    def digital_input_3(self): return (self.alarm_status >> 3) & 0x01
+    @property
+    def status_of_wake(self): return (self.alarm_status >> 4) & 0x01
+    @property
+    def learn_button(self): return (self.profile_marker >> 3) & 0x01
+
+    def __init__(self, temperature=0.0, alarm_status=0x1F, profile_marker=0x08):
         self._temperature = temperature
-        self._digital_input_0 = digital_input_0
-        self._digital_input_1 = digital_input_1
-        self._digital_input_2 = digital_input_2
-        self._digital_input_3 = digital_input_3
-        self._status_of_wake = status_of_wake
-        self._learn_button = learn_button
+        self._alarm_status = alarm_status
+        self._profile_marker = profile_marker
 
 class A5_30_03(_DigitalInputsAndTemperature):
     """Digital Inputs"""

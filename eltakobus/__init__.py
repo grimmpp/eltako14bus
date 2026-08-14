@@ -32,3 +32,5 @@ from .const import *
 from .gateway_scan import *
 from .gateway_identity import *
 from .diagnostics import *
+from .device_catalog import *
+from .teach_in import *
