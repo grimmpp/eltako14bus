@@ -1,8 +1,15 @@
-serial
-asyncio
-pyserial_asyncio
-pyserial
-aiocoap
-pyyaml
+# Runtime and transport dependencies
+pyserial >= 3.4
+pyserial-asyncio
+aiocoap == 0.4a1
+PyYAML
 pyxdg
+
+# Optional ESP3/EnOcean gateway support
+enocean >= 0.60.1
+zeroconf
+
+# Test and distribution tooling
 pytest
+build
+twine

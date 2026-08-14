@@ -10,6 +10,11 @@ This project adheres to [Semantic Versioning](http://semver.org/).
   compilation checks, distribution builds, and `twine` metadata validation.
 - Hardened the release workflow by testing declared package extras, validating
   build artifacts, and checking wheel installation before PyPI publication.
+- Synchronized `requirements.txt` with the declared serial, CoAP, ESP3, test,
+  and build dependencies; removed the unrelated `serial` package and the
+  standard-library `asyncio` entry.
+- Expanded offline replay coverage to all recorded memory rows, discovery
+  frames, passive telegrams, switch-state results, and TCP-adapter input.
 - Added `ESP2TCPSerialInterface` (also available as the upstream-compatible
   `ESP2TCP2SerialCommunicator`) for ESP2-over-TCP gateway adapters, including
   framed telegram parsing, asynchronous exchanges, callbacks, clean stop,

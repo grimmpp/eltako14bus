@@ -7,10 +7,12 @@ network device or physical bus is required.
 """
 
 import asyncio
+import json
 import socket
 import threading
 import time
 import unittest
+from pathlib import Path
 
 from eltakobus.esp2_gateway import ESP2TCPSerialInterface
 from eltakobus.message import EltakoDiscoveryReply, EltakoDiscoveryRequest
@@ -65,6 +67,25 @@ class FakeSocket:
 
 
 class TestESP2TCPSerialInterface(unittest.TestCase):
+    def test_replays_all_recorded_passive_frames(self):
+        """Every captured hardware frame passes through the TCP adapter parser."""
+        report_path = Path(__file__).parent / "resources" / "hardware_test_AQ028YCS_passive_report.json"
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        samples = report["devices"][report["ports"][0]]["sample_frames"]
+        bus = ESP2TCPSerialInterface("recorded", auto_reconnect=False)
+
+        for sample in samples:
+            raw = bytes.fromhex(sample["hex"])
+            # Exercise the stream parser with the same kind of fragmentation
+            # that a TCP recv() can produce.
+            bus._process_bytes(raw[:5])
+            bus._process_bytes(raw[5:])
+
+        parsed = [bus.receive.get_nowait() for _ in samples]
+        self.assertEqual(len(samples), len(parsed))
+        self.assertEqual([sample["hex"] for sample in samples],
+                         [message.serialize().hex() for message in parsed])
+
     def test_receives_and_exchanges_esp2_frames(self):
         sockets = []
 

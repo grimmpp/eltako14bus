@@ -27,6 +27,7 @@ from eltakobus.message import (
 
 REPORT = Path(__file__).parent / "resources" / "hardware_test_AQ028YCS_report.json"
 PASSIVE_REPORT = Path(__file__).parent / "resources" / "hardware_test_AQ028YCS_passive_report.json"
+SWITCH_REPORT = Path(__file__).parent / "resources" / "hardware_test_AQ028YCS_switch_report.json"
 
 
 class RecordedAQ028YCSBus:
@@ -134,6 +135,27 @@ class TestRecordedAQ028YCSBus(unittest.TestCase):
         self.assertEqual(1032, sum(length for _, length, _ in result))
         self.assertTrue(all(not record["failed_rows"] for record in self.report["devices"]))
 
+    def test_every_recorded_discovery_and_memory_frame_round_trips(self):
+        """Every recorded discovery value and memory row remains ESP2-valid."""
+        for record in self.report["devices"]:
+            discovery = EltakoDiscoveryReply(
+                reported_address=record["address"],
+                reported_size=record["size"],
+                memory_size=record["memory_max_row"],
+                model=bytes.fromhex(record["model"]),
+                is_fam=False,
+            )
+            parsed_discovery = EltakoDiscoveryReply.parse(discovery.serialize())
+            self.assertEqual(record["address"], parsed_discovery.reported_address)
+            self.assertEqual(record["model"], parsed_discovery.model.hex())
+
+            self.assertEqual(record["memory_rows_read"], len(record["memory"]))
+            for row, memory in enumerate(record["memory"]):
+                response = EltakoMemoryResponse(row, bytes.fromhex(memory))
+                parsed_response = EltakoMemoryResponse.parse(response.serialize())
+                self.assertEqual(row, parsed_response.row)
+                self.assertEqual(memory, parsed_response.value.hex())
+
     def test_recorded_fud_status_and_switch_command(self):
         """FUD14 status interpretation and generated dim command stay stable."""
         async def scenario():
@@ -161,7 +183,7 @@ class TestRecordedAQ028YCSBus(unittest.TestCase):
         self.assertEqual({"channel": 0, "dim": 0, "ramping_speed": 0}, after)
 
     def test_passive_hardware_samples_are_replayable(self):
-        """Captured raw ESP2 samples remain parseable as valid bus polls."""
+        """All captured raw ESP2 samples remain parseable and lossless."""
         with PASSIVE_REPORT.open() as stream:
             report = json.load(stream)
 
@@ -172,9 +194,29 @@ class TestRecordedAQ028YCSBus(unittest.TestCase):
         samples = report["devices"][report["ports"][0]]["sample_frames"]
         parsed = [prettify(ESP2Message.parse(bytes.fromhex(sample["hex"]))) for sample in samples]
 
-        self.assertEqual(100, len(parsed))
+        self.assertEqual(len(samples), len(parsed))
         self.assertTrue(all(isinstance(message, EltakoPoll) for message in parsed))
+        self.assertEqual(
+            [sample["type"] for sample in samples],
+            [type(message).__name__ for message in parsed],
+        )
+        self.assertEqual(
+            [sample["hex"] for sample in samples],
+            [message.serialize().hex() for message in parsed],
+        )
         self.assertEqual(
             [5, 6, 7, 8, 9, 10, 11, 12, 14, 1, 2, 3, 4],
             [message.address for message in parsed[:13]],
         )
+
+    def test_recorded_switch_report_matches_replayed_fud_state(self):
+        """The recorded switch experiment agrees with the offline FUD replay."""
+        with SWITCH_REPORT.open() as stream:
+            switch = json.load(stream)
+
+        self.assertEqual(5, switch["address"])
+        self.assertEqual("FUD14", switch["device"])
+        self.assertEqual(switch["initial_dim"], switch["initial_status"]["dim"])
+        self.assertEqual(switch["requested_dim"], switch["observed_dim"])
+        self.assertEqual(switch["restored_dim"], switch["restore_status"]["dim"])
+        self.assertTrue(switch["restored"])
