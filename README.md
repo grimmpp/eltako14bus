@@ -39,6 +39,13 @@ on Home Assistant.
 The complete [EEP reference](docs/EEP_REFERENCE.md) lists all implemented
 profiles, organizations, fields, units, and value ranges.
 
+The [A5-38-08 command guide](docs/A5_38_08_COMMANDS.md) describes all
+supported central switching, dimming, HVAC, fan and blind/shutter commands.
+
+The [library roadmap](docs/ROADMAP.md) records planned protocol, EEP,
+diagnostic and testing improvements and clarifies which integration-specific
+features intentionally do not belong in this repository.
+
 Quick start
 -----------
 

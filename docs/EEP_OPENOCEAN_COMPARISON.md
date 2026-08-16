@@ -9,7 +9,7 @@ and Eltako's device catalogue remain authoritative for this library.
 
 ## Findings
 
-- The library currently registers 61 concrete EEP profiles. OpenOcean contains
+- The library currently registers 71 concrete EEP profiles. OpenOcean contains
   131 profile-like classes, including manufacturer suffixes, generic helpers,
   actuator commands, and VLD profiles. The numbers are therefore not a direct
   feature comparison.

@@ -702,10 +702,15 @@ class A5_09_05(_EltakoVOCSensor):
 # ======================================
 
 class _CentralCommand(EEP):
-    metadata = EEPMetadata("", "Central command", "Central switching or dimming command.", 0x07, (
-        EEPFieldMetadata("command", "Command variant: switching or dimming.", data_type="enum", values={1: "switching", 2: "dimming"}),
+    metadata = EEPMetadata("", "Central command", "Central gateway command for switching, dimming and controller functions.", 0x07, (
+        EEPFieldMetadata("command", "Command variant.", data_type="enum", values={1: "switching", 2: "dimming", 3: "setpoint shift", 4: "basic setpoint", 5: "control variable", 6: "fan stage", 7: "blind/shutter"}),
         EEPFieldMetadata("switching", "Switching parameters: time, switch, delay/duration and optional actuator lock.", data_type="object"),
         EEPFieldMetadata("dimming", "Dimming command parameters.", data_type="object"),
+        EEPFieldMetadata("setpoint_shift", "Relative temperature setpoint shift.", "K", (-12.7, 12.8)),
+        EEPFieldMetadata("basic_setpoint", "Absolute basic setpoint.", "°C", (0.0, 51.2)),
+        EEPFieldMetadata("control_variable", "Controller output override.", "%", (0.0, 100.0)),
+        EEPFieldMetadata("fan_stage", "Fan stage override parameters.", data_type="object"),
+        EEPFieldMetadata("blind", "Blind/shutter central-command parameters.", data_type="object"),
     ))
     @classmethod
     def decode_message(cls, msg):
@@ -735,6 +740,32 @@ class _CentralCommand(EEP):
             dimming = CentralCommandDimming(dimming_value, ramping_time, learn_button, dimming_range, store_final_value, switching_command)
             
             return cls(command=command, dimming=dimming)
+        elif command == 0x03:
+            return cls(command=command, setpoint_shift=msg.data[2] / 10.0 - 12.7,
+                       learn_button=(msg.data[3] >> 3) & 1)
+        elif command == 0x04:
+            return cls(command=command, basic_setpoint=msg.data[2] * 0.2,
+                       learn_button=(msg.data[3] >> 3) & 1)
+        elif command == 0x05:
+            control = CentralCommandControlVariable(
+                control_variable=msg.data[2] / 255.0 * 100.0,
+                controller_mode=(msg.data[3] >> 5) & 0x03,
+                controller_state=(msg.data[3] >> 4) & 1,
+                learn_button=(msg.data[3] >> 3) & 1,
+                energy_holdoff=(msg.data[3] >> 2) & 1,
+                occupancy=msg.data[3] & 0x03)
+            return cls(command=command, control_variable=control)
+        elif command == 0x06:
+            return cls(command=command, fan_stage=CentralCommandFanStage(
+                fan_stage=msg.data[2], learn_button=(msg.data[3] >> 3) & 1))
+        elif command == 0x07:
+            return cls(command=command, blind=CentralCommandBlind(
+                parameter_1=msg.data[1], parameter_2=msg.data[2],
+                function=(msg.data[3] >> 4) & 0x0F,
+                learn_button=(msg.data[3] >> 3) & 1,
+                send_status=(msg.data[3] >> 2) & 1,
+                position_angle=(msg.data[3] >> 1) & 1,
+                service_mode=msg.data[3] & 1))
         else:
             raise NotImplementedError
 
@@ -757,6 +788,41 @@ class _CentralCommand(EEP):
             data[3] = data[3] | (self.dimming.learn_button << 3)
             data[2] = self.dimming.ramping_time
             data[1] = self.dimming.dimming_value
+        elif self.command == 0x03:
+            if not -12.7 <= self.setpoint_shift <= 12.8:
+                raise ValueError("Setpoint shift must be between -12.7 and 12.8 K")
+            data[2] = min(255, max(0, round((self.setpoint_shift + 12.7) * 10)))
+            data[3] = self.learn_button << 3
+        elif self.command == 0x04:
+            if not 0.0 <= self.basic_setpoint <= 51.2:
+                raise ValueError("Basic setpoint must be between 0 and 51.2 °C")
+            data[2] = min(255, max(0, round(self.basic_setpoint / 0.2)))
+            data[3] = self.learn_button << 3
+        elif self.command == 0x05:
+            control = self.control_variable
+            if not 0.0 <= control.control_variable <= 100.0:
+                raise ValueError("Control variable must be between 0 and 100 percent")
+            if control.controller_mode not in range(4) or control.occupancy not in range(4):
+                raise ValueError("Controller mode and occupancy must be 2-bit values")
+            data[2] = round(control.control_variable / 100.0 * 255)
+            data[3] = ((control.controller_mode & 0x03) << 5) | ((control.controller_state & 1) << 4) | \
+                      ((control.learn_button & 1) << 3) | ((control.energy_holdoff & 1) << 2) | (control.occupancy & 0x03)
+        elif self.command == 0x06:
+            if self.fan_stage.fan_stage not in (0, 1, 2, 3, 255):
+                raise ValueError("Fan stage must be 0..3 or 255 for automatic")
+            data[2] = self.fan_stage.fan_stage
+            data[3] = self.fan_stage.learn_button << 3
+        elif self.command == 0x07:
+            blind = self.blind
+            for name in ("parameter_1", "parameter_2", "function"):
+                if not 0 <= getattr(blind, name) <= 255:
+                    raise ValueError(f"{name} must be a byte")
+            if not 0 <= blind.function <= 11:
+                raise ValueError("Blind function must be between 0 and 11")
+            data[1] = blind.parameter_1
+            data[2] = blind.parameter_2
+            data[3] = ((blind.function & 0x0F) << 4) | ((blind.learn_button & 1) << 3) | \
+                      ((blind.send_status & 1) << 2) | ((blind.position_angle & 1) << 1) | (blind.service_mode & 1)
         else:
             raise NotImplementedError
 
@@ -775,11 +841,43 @@ class _CentralCommand(EEP):
     @property
     def dimming(self):
         return self._dimming
-        
-    def __init__(self, command, switching=None, dimming=None):
+
+    @property
+    def setpoint_shift(self):
+        return self._setpoint_shift.value if self._setpoint_shift is not None else None
+
+    @property
+    def basic_setpoint(self):
+        return self._basic_setpoint.value if self._basic_setpoint is not None else None
+
+    @property
+    def control_variable(self): return self._control_variable
+
+    @property
+    def fan_stage(self): return self._fan_stage
+
+    @property
+    def blind(self): return self._blind
+
+    @property
+    def learn_button(self):
+        """LRN flag for command variants 0x03 through 0x06."""
+        for value in (self._setpoint_shift, self._basic_setpoint, self._control_variable, self._fan_stage, self._blind):
+            if value is not None:
+                return value.learn_button
+        return 0
+
+    def __init__(self, command, switching=None, dimming=None, setpoint_shift=None,
+                 basic_setpoint=None, control_variable=None, fan_stage=None,
+                 learn_button=1, blind=None):
         self._command = command
         self._switching = switching
         self._dimming = dimming
+        self._setpoint_shift = setpoint_shift if isinstance(setpoint_shift, CentralCommandSetpointShift) else (CentralCommandSetpointShift(setpoint_shift, learn_button) if setpoint_shift is not None else None)
+        self._basic_setpoint = basic_setpoint if isinstance(basic_setpoint, CentralCommandBasicSetpoint) else (CentralCommandBasicSetpoint(basic_setpoint, learn_button) if basic_setpoint is not None else None)
+        self._control_variable = control_variable
+        self._fan_stage = fan_stage if isinstance(fan_stage, CentralCommandFanStage) else (CentralCommandFanStage(fan_stage, learn_button) if fan_stage is not None else None)
+        self._blind = blind
 
 class CentralCommandSwitching:
     """Parameters for A5-38-08 command 0x01 (switching).
@@ -852,12 +950,59 @@ class CentralCommandDimming:
         self._store_final_value = store_final_value
         self._switching_command = switching_command
 
+
+class CentralCommandSetpointShift:
+    """Parameters for command 0x03, a relative setpoint shift in kelvin."""
+    def __init__(self, value, learn_button=1):
+        self.value = value
+        self.learn_button = learn_button
+
+
+class CentralCommandBasicSetpoint:
+    """Parameters for command 0x04, an absolute basic setpoint in Celsius."""
+    def __init__(self, value, learn_button=1):
+        self.value = value
+        self.learn_button = learn_button
+
+
+class CentralCommandControlVariable:
+    """Parameters for command 0x05, controller override and occupancy."""
+    def __init__(self, control_variable=0.0, controller_mode=0, controller_state=0,
+                 learn_button=1, energy_holdoff=0, occupancy=0):
+        self.control_variable = control_variable
+        self.controller_mode = controller_mode
+        self.controller_state = controller_state
+        self.learn_button = learn_button
+        self.energy_holdoff = energy_holdoff
+        self.occupancy = occupancy
+
+
+class CentralCommandFanStage:
+    """Parameters for command 0x06; stage 0..3 or 255 for automatic."""
+    def __init__(self, fan_stage=255, learn_button=1):
+        self.fan_stage = fan_stage
+        self.learn_button = learn_button
+
+
+class CentralCommandBlind:
+    """Parameters for command 0x07, the common blind/shutter command."""
+    def __init__(self, parameter_1=0, parameter_2=0, function=0,
+                 learn_button=1, send_status=0, position_angle=0,
+                 service_mode=0):
+        self.parameter_1 = parameter_1
+        self.parameter_2 = parameter_2
+        self.function = function
+        self.learn_button = learn_button
+        self.send_status = send_status
+        self.position_angle = position_angle
+        self.service_mode = service_mode
+
 class A5_38_08(_CentralCommand):
     """Central switching/dimming command for gateway-to-actuator control.
 
-    Command ``0x01`` switches an actuator and can lock it; command ``0x02``
-    sets a dimming value and ramp time.  This EEP represents commands, not a
-    guaranteed feedback/status telegram.
+    Commands ``0x01`` through ``0x07`` cover switching, dimming, HVAC
+    controller values, fan stages and blind/shutter control. This EEP
+    represents commands, not a guaranteed feedback/status telegram.
     """
 
 # ======================================

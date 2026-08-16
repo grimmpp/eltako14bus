@@ -8,6 +8,11 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 - Documented the A5-38-08 switching lock semantics directly in the EEP code,
   metadata reference, and regression tests.
+- Added A5-38-08 gateway commands for setpoint shift, basic setpoint, control
+  variable override, fan-stage selection and common blind/shutter control,
+  with backward-compatible encode/decode tests.
+- Added a detailed library roadmap covering ESP3, VLD, transactions, teach-in,
+  virtual-bus testing, diagnostics and project boundaries.
 
 ## 1.0.1
 

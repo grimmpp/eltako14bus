@@ -89,7 +89,7 @@ single outgoing radio organization.
 | A5-20-04 | Valve and temperature sensor | 07 | `valve_position` 0…100 %; `temperature`; `status` 0…255; `battery_empty` 0…1 |
 | A5-30-01 | Digital input with battery status | 07 | battery/contact raw statuses 0…255; `low_battery`, `contact_closed`, `learn_button` 0…1 |
 | A5-30-03 | Four digital inputs and temperature | 07 | `temperature` 0…40 °C; `alarm_status`, `profile_marker` 0…255; `alarm` 0…1 |
-| A5-38-08 | Central command | 07 | `command` 1=switching, 2=dimming; switching includes time, delay/duration and `lock`; dimming includes value, ramping and store-final-value |
+| A5-38-08 | Central command | 07 | `command` 1=switching, 2=dimming, 3=setpoint shift, 4=basic setpoint, 5=control variable, 6=fan stage, 7=blind/shutter; fields include lock, timing, dimming, HVAC, occupancy and blind-control values |
 
 ## D5 and F6 contact/switch profiles
 

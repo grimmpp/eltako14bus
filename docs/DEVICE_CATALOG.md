@@ -24,6 +24,11 @@ from the EEP used for outgoing commands (`sender_eep`). Use
 `devices_for_eep(name, include_sender=True)` when both directions are needed.
 `eep_device_mapping()` returns the complete reverse index.
 
+For command-level applicability, see the [A5-38-08 command guide](A5_38_08_COMMANDS.md).
+An actuator entry's `sender_eep` identifies the normal command profile; it does
+not imply that every optional command variant of that EEP is supported by every
+firmware version.
+
 The initial device mapping was compared with the catalog used by the
 [home-assistant-eltako integration](https://github.com/grimmpp/home-assistant-eltako/tree/version2.2/custom_components/eltako/catalog)
 as an external reference. That repository is not imported, installed, or required

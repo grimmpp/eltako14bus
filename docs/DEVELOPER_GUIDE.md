@@ -440,6 +440,10 @@ the Python object, while `values` describes enumerations and bit flags. The
 metadata is descriptive and does not replace validation performed by the EEP
 encoder.
 
+For the complete central-command API, including switching lock semantics,
+dimming, HVAC, fan-stage and blind/shutter commands, see
+[A5-38-08_COMMANDS.md](A5_38_08_COMMANDS.md).
+
 `AddressExpression` represents a four-byte address with an optional
 discriminator such as `"00-21-63-43 left"`:
 
