@@ -4,7 +4,10 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Unreleased
 
-No changes yet.
+### Documentation and tests
+
+- Documented the A5-38-08 switching lock semantics directly in the EEP code,
+  metadata reference, and regression tests.
 
 ## 1.0.1
 

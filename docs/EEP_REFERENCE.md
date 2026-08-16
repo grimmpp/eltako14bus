@@ -89,7 +89,7 @@ single outgoing radio organization.
 | A5-20-04 | Valve and temperature sensor | 07 | `valve_position` 0…100 %; `temperature`; `status` 0…255; `battery_empty` 0…1 |
 | A5-30-01 | Digital input with battery status | 07 | battery/contact raw statuses 0…255; `low_battery`, `contact_closed`, `learn_button` 0…1 |
 | A5-30-03 | Four digital inputs and temperature | 07 | `temperature` 0…40 °C; `alarm_status`, `profile_marker` 0…255; `alarm` 0…1 |
-| A5-38-08 | Central command | 07 | `command`: switching/dimming; `switching` and `dimming` parameter objects |
+| A5-38-08 | Central command | 07 | `command` 1=switching, 2=dimming; switching includes time, delay/duration and `lock`; dimming includes value, ramping and store-final-value |
 
 ## D5 and F6 contact/switch profiles
 
@@ -130,6 +130,12 @@ applications should therefore keep the raw values and tolerate future profile
 revisions.
 
 ## Notes on interpretation
+
+For A5-38-08 switching commands, `lock=True` tells the addressed actuator to
+ignore all commands until the timer expires. A timer of `0` creates an
+unlimited lock. Only an explicit unlock command is accepted during the lock
+phase; this is an actuator command lock, not a cryptographic or installation
+security feature.
 
 Some fields are intentionally exposed as raw status or marker values because
 their meaning depends on Eltako device configuration. For example, meter

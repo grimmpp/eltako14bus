@@ -68,6 +68,12 @@ class EEPMetadata(namedtuple(
         }
 
 class EEP:
+    """Base class for decoded EEP telegrams.
+
+    Every concrete EEP below has a short, machine-readable description in
+    ``metadata``.  Consumers should use ``get_metadata()`` for a compact
+    summary of the telegram's purpose, fields, units and value ranges.
+    """
     __sublasses_by_string = {}
     metadata = EEPMetadata(
         eep="",
@@ -698,7 +704,7 @@ class A5_09_05(_EltakoVOCSensor):
 class _CentralCommand(EEP):
     metadata = EEPMetadata("", "Central command", "Central switching or dimming command.", 0x07, (
         EEPFieldMetadata("command", "Command variant: switching or dimming.", data_type="enum", values={1: "switching", 2: "dimming"}),
-        EEPFieldMetadata("switching", "Switching command parameters.", data_type="object"),
+        EEPFieldMetadata("switching", "Switching parameters: time, switch, delay/duration and optional actuator lock.", data_type="object"),
         EEPFieldMetadata("dimming", "Dimming command parameters.", data_type="object"),
     ))
     @classmethod
@@ -776,6 +782,14 @@ class _CentralCommand(EEP):
         self._dimming = dimming
 
 class CentralCommandSwitching:
+    """Parameters for A5-38-08 command 0x01 (switching).
+
+    ``lock`` requests an actuator lock.  With ``lock=1`` the actuator accepts
+    no other commands until the timer expires; ``time=0`` means an unlimited
+    lock.  An explicit unlock command is the exception and remains accepted.
+    The same timer is used as a delay or switching duration according to
+    ``delay_or_duration`` when the command is not a lock operation.
+    """
     @property
     def time(self):
         return self._time
@@ -786,6 +800,7 @@ class CentralCommandSwitching:
 
     @property
     def lock(self):
+        """Whether the target actuator shall ignore commands temporarily."""
         return self._lock
 
     @property
@@ -804,6 +819,7 @@ class CentralCommandSwitching:
         self._switching_command = switching_command
 
 class CentralCommandDimming:
+    """Parameters for A5-38-08 command 0x02 (absolute dimming)."""
     @property
     def dimming_value(self):
         return self._dimming_value
@@ -837,7 +853,12 @@ class CentralCommandDimming:
         self._switching_command = switching_command
 
 class A5_38_08(_CentralCommand):
-    """Central Command Gateway"""
+    """Central switching/dimming command for gateway-to-actuator control.
+
+    Command ``0x01`` switches an actuator and can lock it; command ``0x02``
+    sets a dimming value and ramp time.  This EEP represents commands, not a
+    guaranteed feedback/status telegram.
+    """
 
 # ======================================
 # MARK: - Eltako Gateway Switching
