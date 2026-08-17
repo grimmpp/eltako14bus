@@ -111,3 +111,31 @@ The test environment must contain real `pyserial` and `pyserial-asyncio` for
 the threaded serial tests. A local namespace-only `serial` installation lacks
 `serial.serialutil` and `serial_for_url`; that is an environment/dependency
 blocker, not a parser compatibility failure.
+
+## Required gates for future roadmap milestones
+
+Every future milestone must provide evidence for all applicable gates:
+
+- **Behavior:** focused unit tests cover valid, invalid, boundary, cancellation
+  and failure cases, with replay/fake transports before hardware tests.
+- **Compatibility:** old imports, constructors, serialized bytes, parser
+  exceptions, callback order and default timing are regression-tested. New
+  behavior is opt-in and deprecations include a migration note.
+- **Safety:** destructive bus operations require explicit policy/confirmation;
+  snapshots and parsers are side-effect free; persistence rejects unknown
+  schemas and partial writes.
+- **Resilience:** fragmented streams, noise, duplicate frames, disconnects,
+  reconnects, cancellation, queue pressure and concurrent callers are bounded
+  and tested without hangs.
+- **Evidence:** official EEP vectors record provenance; hardware results are
+  stored as replayable fixtures; performance claims include workload and
+  environment.
+- **Packaging:** core imports without optional extras, supported Python
+  versions are checked, metadata/license/dependency checks pass, and the wheel
+  plus source distribution are validated.
+- **Handoff:** implementation docs, roadmap status, refactoring findings and
+  `CHANGES.md` are updated before the iteration is marked complete.
+
+The acceptance result should state which gates were exercised and which remain
+explicitly deferred. A passing unit test alone is not sufficient evidence for
+a roadmap milestone that changes safety, persistence, timing or public APIs.

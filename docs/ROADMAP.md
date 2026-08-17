@@ -94,6 +94,79 @@ or a complete official vector corpus as finished. Those remain post-RC roadmap
 work. Persistent learned-device storage is available only through the explicit
 opt-in registry and does not authorize or perform teach-in by itself.
 
+## Post-RC implementation plan
+
+The following milestones are ordered by risk. Each milestone is accepted only
+when its focused tests, compatibility checks, documentation and changelog are
+complete. Hardware tests are additive evidence and never replace replay/fake
+transport coverage.
+
+### M1: secure teach-in and authorization boundary
+
+- Add an explicit authorization policy interface for sender, manufacturer,
+  EEP, channel and installation scope.
+- Add replay protection and decision auditing without making the parser stateful.
+- Keep `UTETeachInSession` fail-closed: no policy means no response, and a
+  timeout/cancellation never enrolls a device.
+- Add tests for duplicate queries, teach-out authorization, policy timeout,
+  cancellation, unknown EEPs and persistence failures.
+
+Acceptance requires no automatic enrollment, no response from parsing alone,
+bounded decision time and a structured audit result. Existing UTE models,
+response codes and `LearnedDeviceRegistry` JSON records remain readable.
+
+### M2: device-specific memory safety
+
+- Extend the memory catalog with protected ranges, write granularity and
+  device/firmware-specific rollback capabilities.
+- Reject unsupported rollback claims instead of simulating atomicity.
+- Keep dry-run, explicit confirmation, stale-plan and read-back verification
+  mandatory for destructive writes.
+
+Acceptance requires a no-I/O validation test for every rejected plan, replay
+coverage for successful and failed writes, and preservation of the existing
+`MemoryPlan`/session constructors.
+
+### M3: official EEP conformance and catalog quality
+
+- Add independently sourced vectors for supported profiles, including minimum,
+  maximum, reserved, error, teach-in and round-trip values.
+- Expand EEP/device mappings only when the wire layout and source revision are
+  recorded.
+- Generate or validate reference documentation from runtime metadata so names,
+  units and ranges cannot silently diverge.
+
+Acceptance requires provenance per vector, encode/decode tests where supported,
+explicit handling of unknown/reserved values and no change to legacy decoder
+result objects or `EEP.find()` behavior.
+
+### M4: resilient transports and operational tooling
+
+- Provide safe external reconnect requests for TCP/serial transports without
+  deadlocking when called from status or receive callbacks.
+- Integrate opt-in metrics into higher-level gateway reports and add recording,
+  inspection and replay commands to `eltakotool.py`.
+- Add bounded queues, backpressure policy and clear shutdown diagnostics for
+  long-running streams.
+
+Acceptance requires deterministic virtual-bus tests for disconnect/reconnect,
+concurrent producers, cancellation and backpressure. Legacy timing, callback
+ordering, constructors and default queue behavior remain unchanged.
+
+### M5: quality, security and release readiness
+
+- Add a Python-version/optional-dependency test matrix, static typing and
+  linting checks for the core package.
+- Add property/fuzz-style tests for ESP2/ESP3 framing and message classification
+  with bounded input and no unhandled parser exceptions.
+- Add performance baselines for 60+ telegram streams, parser throughput,
+  queue latency and reconnect recovery.
+- Add dependency/license/SBOM checks and a documented deprecation policy.
+
+Acceptance requires reproducible offline unit tests, isolated optional-extra
+tests, package metadata validation and an explicit compatibility report before
+any stable 2.x release.
+
 ## Priority 1: protocol correctness and reliability
 
 ### Native ESP3 message model
@@ -138,8 +211,8 @@ approval.
 ## Priority 2: EEP coverage and validation
 
 The RC corrects the D2 profile identity and validates the currently registered
-D2 profiles. The generic field engine and independent official vector corpus
-remain planned work.
+D2 profiles. The generic field engine is delivered; independent official
+vector coverage remains planned work.
 
 ### Generic VLD field engine
 
@@ -165,8 +238,8 @@ firmware-dependent variants and receive/sender EEP compatibility explicitly.
 ## Priority 3: offline development and diagnostics
 
 The RC delivers the virtual bus, replay and recording foundation plus passive,
-structured diagnostic snapshots. Transport-level cumulative rates, retry
-counters and reconnect histories remain planned work.
+structured diagnostic snapshots. Higher-level recording commands, report
+integration and reconnect controls remain planned work.
 
 ### Virtual bus and fault injection
 
@@ -207,3 +280,19 @@ silently instrumented and therefore keep their legacy timing behavior.
 The library should not contain Home Assistant entity classes, UI behavior,
 service names or platform-specific state restoration. Those concerns belong in
 integrations that use the protocol and EEP APIs.
+
+## Compatibility contract for all future work
+
+- Existing module paths, public class names, constructors, properties,
+  `serialize()` output, `.parse()` behavior and `EEP.find()` results remain
+  supported unless a versioned deprecation is documented.
+- New behavior is opt-in through new functions, keyword arguments or explicit
+  policy objects. Existing defaults preserve timing, callback ordering,
+  exception types and side-effect boundaries.
+- ESP2 and ESP3 raw wire formats, checksum behavior and unknown-packet
+  preservation must remain lossless.
+- Optional dependencies stay optional; importing the core must not require
+  serial, CoAP, discovery, YAML or Home Assistant packages.
+- Every change requires focused unit tests, a compatibility regression test,
+  documentation, a refactoring checkpoint, full-suite validation and a
+  `CHANGES.md` entry before the iteration is closed.

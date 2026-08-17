@@ -40,6 +40,9 @@ the old mislabeled decoder.
   explicit application responsibilities.
 - Reworked mixed ESP2 message classification to select decoders from validated
   wire-format markers instead of probing every message class with exceptions.
+- Refreshed the roadmap and status with post-RC milestones for secure teach-in,
+  memory safety, EEP conformance, transport resilience, quality automation and
+  explicit backward-compatibility acceptance gates.
 - Added a gateway overview covering FAM14, FGW14-USB, FAM-USB, USB300, ESP3,
   LAN, ESP2-over-TCP and CoAP transports, including baud rates, capabilities,
   usage examples and the passive LAN discovery boundary.

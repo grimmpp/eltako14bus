@@ -19,14 +19,17 @@ The current development line contains the following completed milestones:
 - opt-in transport metrics with message rates, retries and bounded reconnect
   history;
 - EEP/device metadata, catalog and developer/user documentation.
+- explicit JSON-backed learned-device persistence with fail-closed schema
+  validation;
+- deterministic ESP2 message classification without decoder probing.
 
-The previous validation baseline was `304 passed, 2 skipped, 311 subtests
-passed`. The current suite reports `317 passed, 2 skipped, 319 subtests
-passed`, including passive LAN discovery and packaging tests. Compilation and
-diff checks pass. The isolated build requires network access for its temporary
-build environment; the source metadata remains valid and the non-isolated
-build is used in offline validation. The version remains `2.0.0rc1`; no tag or
-release is moved by roadmap work alone.
+The previous validation baseline was `322 passed, 2 skipped, 319 subtests
+passed`. The current suite reports `325 passed, 2 skipped, 336 subtests
+passed`, including deterministic message-classification coverage and package
+metadata checks. Compilation, documentation-link and diff checks pass. The
+non-isolated wheel/source build and `twine check` pass locally; isolated builds
+still require network access for temporary build dependencies. The version
+remains `2.0.0rc1`; no tag or release is moved by roadmap work alone.
 
 ## Latest completed iteration
 
@@ -85,6 +88,8 @@ The current milestone round is split into disjoint tasks:
 17. Reworked legacy ESP2 message classification to use preamble, length,
     checksum, `h_seq`, ORG and teach-in markers before invoking one decoder;
     existing `.parse()` methods and `prettify()` behavior remain compatible.
+18. Refreshed the roadmap into prioritized post-RC milestones with explicit
+    security, quality, acceptance and backward-compatibility gates.
 
 The refactoring checkpoint confirmed that these additions remain additive,
 dependency-free and outside Home Assistant. Its concrete boundaries,
@@ -132,17 +137,34 @@ application confirmation and are validated using replay/fake transports first.
 
 ## Open after the latest iteration
 
-- secure teach-in and persistent learned-device storage;
+- secure teach-in authorization, replay protection and audit semantics;
 - actuator-specific memory-write rollback semantics;
-- independently reviewed D2-00-01 and other official vector expansion where a
-  source revision is available;
-- multi-version CI/static typing improvements.
+- independently reviewed D2-00-01 and other official vector expansion with
+  recorded source revisions;
+- EEP metadata/reference generation and device-catalog variant validation;
+- multi-version CI, static typing, linting and dependency/license checks;
+- property/fuzz-style bounded parser tests and documented performance baselines;
 - explicit, safe semantics for requesting TCP reconnect from inside the
   transport's own status callback; callers should currently request reconnect
   from an external thread/task.
-- optional integration of `TransportMetrics` into each transport's own
-  higher-level gateway report, if this can be done without changing legacy
-  timing. The transport constructors already support opt-in collection.
+- higher-level gateway metrics/report integration and recording/replay CLI
+  commands, if this can be done without changing legacy timing;
+- bounded-queue/backpressure policy for long-running streams;
+- a versioned public-API deprecation policy and stable 2.x release-readiness
+  report.
+
+## Next iteration recommendation
+
+Start with M1 secure teach-in authorization. It has the highest safety impact
+and can be implemented without changing the existing parser or transport
+interfaces. M2 memory safety should follow after the policy/audit boundary is
+reviewed. M3 through M5 can then expand coverage and operational quality with
+lower risk to the protocol core.
+
+Each next iteration must record: scope, compatibility assumptions, focused
+tests, review findings, full validation result and the corresponding
+`CHANGES.md` entry. A milestone is not complete merely because its code exists;
+all acceptance gates must be green.
 
 ## Local verification note
 
