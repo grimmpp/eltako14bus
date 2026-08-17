@@ -12,6 +12,12 @@ with or without a FAM14 present on the bus,
 through a FAM14's serial connection,
 or through a bespoke CoAP interface to the ESP2 protocol.
 
+It provides native ESP2/ESP3 framing, EEP metadata and catalog APIs, deterministic message classification, optional LAN discovery, replayable virtual-bus testing and explicit safety
+boundaries for teach-in and memory operations.
+
+Start with the [documentation index](docs/INDEX.md), which organizes all
+guides by user task instead of requiring knowledge of the repository layout.
+
 Tools
 -----
 
@@ -20,6 +26,10 @@ do various raw interactions with the bus
 (replacing some FAM14 functionality, locking and unlocking the bus, sending arbitrary messages)
 as well as reading and writing the bus participants' memory
 (including verification and annotation of the memory contents).
+
+Hardware-changing commands are opt-in application operations. Parsing,
+diagnostics, replay and virtual-bus tests do not open hardware or transmit
+telegrams by themselves.
 
 Developer documentation
 -----------------------
@@ -73,6 +83,11 @@ migration.
 The [UTE session guide](docs/UTE_SESSION.md) documents explicit, fail-closed
 teach-in decisions and the separate opt-in learned-device registry.
 
+The [message parser guide](docs/MESSAGE_PARSER.md) explains how mixed ESP2
+streams are classified from validated wire markers without probing every
+decoder with exceptions. The [diagnostics guide](docs/DIAGNOSTICS.md) covers
+passive snapshots and opt-in transport metrics.
+
 Quick start
 -----------
 
@@ -87,6 +102,22 @@ The library is asynchronous. A minimal application creates an
 `RS485SerialInterfaceV2`, starts it, awaits `bus.exchange(...)`, and calls
 `bus.stop()` during shutdown. See the developer guide for a complete example
 and the required baud-rate settings for common gateways.
+
+Testing and releases
+--------------------
+
+Run the hardware-independent suite with:
+
+```sh
+python3 -m pytest -q
+```
+
+Serial hardware tests are optional and skip absent devices. The [roadmap
+status](docs/ROADMAP_STATUS.md) records the current validation baseline and
+next milestones. The [roadmap QA gates](docs/ROADMAP_QA.md) define the required
+behavior, safety, compatibility, resilience and packaging evidence for future
+changes. Use the [release guide](docs/RELEASING.md) for versioning, builds,
+tags, GitHub Releases and PyPI publication.
 
 Protocol description
 --------------------

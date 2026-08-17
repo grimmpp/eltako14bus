@@ -43,6 +43,8 @@ the old mislabeled decoder.
 - Refreshed the roadmap and status with post-RC milestones for secure teach-in,
   memory safety, EEP conformance, transport resilience, quality automation and
   explicit backward-compatibility acceptance gates.
+- Updated the README with the current release-line capabilities, documentation
+  entry point, safety boundaries, testing instructions and release workflow.
 - Added a gateway overview covering FAM14, FGW14-USB, FAM-USB, USB300, ESP3,
   LAN, ESP2-over-TCP and CoAP transports, including baud rates, capabilities,
   usage examples and the passive LAN discovery boundary.

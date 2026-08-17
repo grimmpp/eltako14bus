@@ -90,6 +90,9 @@ The current milestone round is split into disjoint tasks:
     existing `.parse()` methods and `prettify()` behavior remain compatible.
 18. Refreshed the roadmap into prioritized post-RC milestones with explicit
     security, quality, acceptance and backward-compatibility gates.
+19. Updated the README as the concise project landing page with links to the
+    documentation index, current capabilities, safety boundaries, testing and
+    release procedures.
 
 The refactoring checkpoint confirmed that these additions remain additive,
 dependency-free and outside Home Assistant. Its concrete boundaries,
