@@ -11,6 +11,7 @@ from dataclasses import dataclass, asdict
 
 from .error import TimeoutError
 from .message import EltakoDiscoveryReply, EltakoDiscoveryRequest
+from .diagnostic_snapshot import *
 
 
 @dataclass

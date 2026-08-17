@@ -123,14 +123,26 @@ DEVICE_CATALOG: list[dict] = [
      'platform': 'binary_sensor', 'eep': 'A5-14-08', 'address_count': 1},
 
     # VLD devices are received via ESP3 gateways.
-    {'hw_type': 'FMMS44SB', 'brand': 'ELTAKO', 'description': 'Room controller with environment data',
-     'platform': 'sensor', 'eep': 'D2-00-01', 'address_count': 1},
-    {'hw_type': 'FMS55SB', 'brand': 'ELTAKO', 'description': 'Indoor multisensor',
+    # The first row is the factory-default profile returned by find_hw_type().
+    # Further rows are NFC-selectable profiles exposed by entries_for_hw_type().
+    {'hw_type': 'FMMS44SB', 'brand': 'ELTAKO', 'description': 'Mini multisensor (factory default)',
+     'platform': 'sensor', 'eep': 'D2-14-41', 'address_count': 1},
+    {'hw_type': 'FMMS44SB', 'brand': 'ELTAKO', 'description': 'Mini multisensor (NFC profile)',
      'platform': 'sensor', 'eep': 'D2-14-40', 'address_count': 1},
-    {'hw_type': 'FMS55ESB', 'brand': 'ELTAKO', 'description': 'Indoor multisensor with contact',
+    {'hw_type': 'FMMS44SB', 'brand': 'ELTAKO', 'description': 'Room-control-panel mode (NFC profile)',
+     'platform': 'sensor', 'eep': 'D2-00-01', 'address_count': 1},
+    {'hw_type': 'FMS55SB', 'brand': 'ELTAKO', 'description': 'Indoor multisensor (factory default)',
      'platform': 'sensor', 'eep': 'D2-14-41', 'address_count': 1},
-    {'hw_type': 'FMS65ESB', 'brand': 'ELTAKO', 'description': 'Indoor multisensor with contact',
+    {'hw_type': 'FMS55SB', 'brand': 'ELTAKO', 'description': 'Indoor multisensor (NFC profile)',
+     'platform': 'sensor', 'eep': 'D2-14-40', 'address_count': 1},
+    {'hw_type': 'FMS55ESB', 'brand': 'ELTAKO', 'description': 'Indoor multisensor with contact (factory default)',
      'platform': 'sensor', 'eep': 'D2-14-41', 'address_count': 1},
+    {'hw_type': 'FMS55ESB', 'brand': 'ELTAKO', 'description': 'Indoor multisensor (NFC profile)',
+     'platform': 'sensor', 'eep': 'D2-14-40', 'address_count': 1},
+    {'hw_type': 'FMS65ESB', 'brand': 'ELTAKO', 'description': 'Indoor multisensor with contact (factory default)',
+     'platform': 'sensor', 'eep': 'D2-14-41', 'address_count': 1},
+    {'hw_type': 'FMS65ESB', 'brand': 'ELTAKO', 'description': 'Indoor multisensor (NFC profile)',
+     'platform': 'sensor', 'eep': 'D2-14-40', 'address_count': 1},
 
     # temperature and humidity
     {'hw_type': 'FLGTF', 'brand': 'ELTAKO', 'description': 'Temperature and Humidity Sensor',

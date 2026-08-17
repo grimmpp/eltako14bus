@@ -20,6 +20,8 @@ import asyncio
 from .bus import BusInterface
 from .error import ParseError, TimeoutError
 from .message import ESP2Message, EltakoTimeout, prettify
+from .esp2_frame import ESP2FrameParser
+from .transport_metrics import TransportMetrics
 
 
 class ESP2TCPSerialInterface(BusInterface, threading.Thread):
@@ -56,7 +58,7 @@ class ESP2TCPSerialInterface(BusInterface, threading.Thread):
     def __init__(self, host, port=5000, *, log=None, callback=None,
                  reconnection_timeout=10.0, delay_message=0.01,
                  auto_reconnect=True, socket_factory=None,
-                 recv_size=1024):
+                 recv_size=1024, metrics: TransportMetrics | None = None):
         BusInterface.__init__(self)
         threading.Thread.__init__(self, daemon=True)
         self.host = host
@@ -67,11 +69,12 @@ class ESP2TCPSerialInterface(BusInterface, threading.Thread):
         self._auto_reconnect = auto_reconnect
         self._socket_factory = socket_factory or socket.socket
         self._recv_size = recv_size
+        self.metrics = metrics
         self._stop_flag = threading.Event()
         self._connected = threading.Event()
         self.is_serial_connected = self._connected
         self._socket = None
-        self._buffer = bytearray()
+        self._frame_parser = ESP2FrameParser()
         self._mutex = threading.Lock()
         self.transmit = queue.Queue()
         self.receive = queue.Queue()
@@ -97,23 +100,38 @@ class ESP2TCPSerialInterface(BusInterface, threading.Thread):
     async def exchange(self, request, responsetype=None, retries=3,
                        timeout=1.0):
         """Send a request and return its first matching response."""
+        if timeout < 0:
+            raise ValueError("timeout must not be negative")
         async with self._exchange_lock:
             if self._callback is not None:
                 raise RuntimeError(
                     "exchange is not reentrant while a callback is configured"
                 )
             while retries > 0:
+                # A request queued without an active worker can never be
+                # acknowledged. Preserve this transport's established timeout
+                # contract, but never wait forever.
+                if self._stop_flag.is_set() or not self.is_alive():
+                    raise TimeoutError
                 while not self.receive.empty():
                     self.receive.get_nowait()
-                send_time = time.time()
+                deadline = time.monotonic() + timeout
                 self._send(request)
                 while self.transmit.unfinished_tasks > 0:
-                    await asyncio.sleep(0.001)
-                while time.time() - send_time <= timeout:
+                    if self._stop_flag.is_set() or not self.is_alive():
+                        raise TimeoutError
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    await asyncio.sleep(min(0.001, remaining))
+                while time.monotonic() <= deadline:
                     try:
                         message = self.receive.get_nowait()
                     except queue.Empty:
-                        await asyncio.sleep(0.001)
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            break
+                        await asyncio.sleep(min(0.001, remaining))
                         continue
                     if responsetype is None:
                         return message
@@ -162,11 +180,15 @@ class ESP2TCPSerialInterface(BusInterface, threading.Thread):
         sock.connect((self.host, self.port))
         self._socket = sock
         self._connected.set()
+        if self.metrics is not None:
+            self.metrics.record_connection(True)
         self._fire_status_change_handler(True)
         self.log.info("Connected to ESP2 gateway %s:%s", self.host, self.port)
 
     def _disconnect(self):
         self._connected.clear()
+        if self.metrics is not None:
+            self.metrics.record_connection(False)
         self._fire_status_change_handler(False)
         sock, self._socket = self._socket, None
         if sock is not None:
@@ -185,28 +207,27 @@ class ESP2TCPSerialInterface(BusInterface, threading.Thread):
                 if timestamp < time.time() - 30:
                     continue
                 self._socket.sendall(message.serialize())
+                if self.metrics is not None:
+                    self.metrics.record_message("sent")
                 if self.delay_message:
                     time.sleep(self.delay_message)
             finally:
                 self.transmit.task_done()
 
     def _process_bytes(self, data):
-        self._buffer.extend(data)
-        while len(self._buffer) >= 14:
-            raw = bytes(self._buffer[:14])
-            try:
-                parsed = prettify(ESP2Message.parse(raw))
-            except ParseError:
-                del self._buffer[0]
-                continue
-            del self._buffer[:14]
+        for raw in self._frame_parser.feed(data):
+            parsed = prettify(ESP2Message.parse(raw))
             if self._callback is not None:
                 try:
                     self._callback(parsed)
+                    if self.metrics is not None:
+                        self.metrics.record_message("received")
                 except Exception:
                     self.log.exception("Gateway receive callback failed")
             else:
                 self.receive.put(parsed)
+                if self.metrics is not None:
+                    self.metrics.record_message("received")
 
     def run(self):
         self._fire_status_change_handler(False)
@@ -224,6 +245,8 @@ class ESP2TCPSerialInterface(BusInterface, threading.Thread):
                 self._process_bytes(data)
             except (OSError, IOError, ConnectionError) as exc:
                 self.log.warning("ESP2 gateway connection lost: %s", exc)
+                if self.metrics is not None and self._socket is None:
+                    self.metrics.record_reconnect_failure()
                 self._disconnect()
                 if not self._auto_reconnect:
                     break

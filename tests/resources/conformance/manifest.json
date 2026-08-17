@@ -1,0 +1,18 @@
+{
+  "format_version": 1,
+  "description": "Conformance-vector suites with explicit provenance and placeholder handling.",
+  "suites": [
+    {
+      "kind": "esp2",
+      "file": "esp2.json"
+    },
+    {
+      "kind": "esp3",
+      "file": "esp3.json"
+    },
+    {
+      "kind": "eep_schema",
+      "file": "eep_schema.json"
+    }
+  ]
+}

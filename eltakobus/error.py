@@ -4,6 +4,16 @@ class WriteError(Exception):
     """Raised when a write prcess does not give the expected responses"""
 class TimeoutError(Exception):
     """Raised by exchange if the bus timeout is encountered, or a FAM responded with a timeout message."""
+class CommandError(Exception):
+    """Base class for errors raised by the opt-in transaction layer."""
+class CommandTimeout(CommandError, TimeoutError):
+    """Raised when a transaction exhausts all configured response attempts."""
+class CommandRejected(CommandError):
+    """Raised when a response explicitly rejects a transaction request."""
+class UnsupportedCommand(CommandError):
+    """Raised when a transport cannot execute a transaction request."""
+class TransactionCancelled(CommandError):
+    """Raised when a waiting transaction is cancelled before it completes."""
 class UnrecognizedUpdate(Exception):
     """Raised when interpret_status_update is fed a message which the device does not recognize as being emitted from it."""
 class BadFAMMode1(Exception):

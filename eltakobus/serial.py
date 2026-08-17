@@ -4,15 +4,32 @@ import logging
 
 import threading
 import queue
-import serial
 
-import serial_asyncio
+try:
+    import serial
+except ImportError as exc:  # pragma: no cover - exercised in a dependency-isolated process
+    raise ImportError(
+        "Serial transports require the optional serial dependencies. "
+        "Install them with `python -m pip install 'eltako14bus[serial]'` "
+        "(pyserial and pyserial-asyncio)."
+    ) from exc
+
+try:
+    import serial_asyncio
+except ImportError as exc:  # pragma: no cover - exercised in a dependency-isolated process
+    raise ImportError(
+        "Serial transports require the optional serial dependencies. "
+        "Install them with `python -m pip install 'eltako14bus[serial]'` "
+        "(pyserial and pyserial-asyncio)."
+    ) from exc
 
 from eltakobus import locking
 
 from .bus import BusInterface
 from .error import ParseError, TimeoutError
 from .message import ESP2Message, EltakoMemoryRequest, EltakoMemoryResponse, prettify, EltakoTimeout, EltakoDiscoveryRequest, EltakoDiscoveryReply
+from .esp2_frame import ESP2FrameParser
+from .transport_metrics import TransportMetrics
 from .util import AddressExpression, b2s
 
 class RS485SerialInterfaceV2(BusInterface, threading.Thread):
@@ -47,7 +64,8 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                  reconnection_timeout:float=10, 
                  delay_message:float=0.01, 
                  auto_reconnect=True,
-                 disabled_echotest=False):
+                 disabled_echotest=False,
+                 metrics: TransportMetrics | None = None):
         
         super(RS485SerialInterfaceV2, self).__init__()
         self._filename = filename
@@ -55,13 +73,14 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
         self.delay_message = delay_message
         self._auto_reconnect = auto_reconnect
         self.disabled_echotest = disabled_echotest
+        self.metrics = metrics
 
         self.log = log or logging.getLogger('eltakobus.serial')
 
         # Create an event to stop the thread
         self._stop_flag = threading.Event()
         # Input buffer
-        self._buffer = []
+        self._frame_parser = ESP2FrameParser()
         self.__mutex = threading.Lock()
         # Setup packet queues
         self.transmit = queue.Queue()
@@ -102,6 +121,8 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
 
 
     def _fire_status_change_handler(self, connected:bool) -> None:
+        if self.metrics is not None:
+            self.metrics.record_connection(connected)
         try:
             if self.status_changed_handler:
                 self.status_changed_handler(connected)
@@ -241,6 +262,10 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
         self.log.info('Serial communication started')
         self._fire_status_change_handler(connected=False)
         while not self._stop_flag.is_set():
+            callbacks = []
+            connection_state_change = None
+            sent_count = 0
+            received_count = 0
             try:
                 with self.__mutex:
                     # reconnect
@@ -259,7 +284,10 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                             self.log.debug("Echo detection disabled.")
                         
                         self.is_serial_connected.set()
-                        self._fire_status_change_handler(connected=True)
+                        # User handlers may call back into this transport. Do
+                        # not invoke them while the non-reentrant mutex is
+                        # held; notification is performed below.
+                        connection_state_change = True
 
                     # send messages
                     while not self.transmit.empty(): 
@@ -271,6 +299,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                         else:
                             try:
                                 self.__serial.write(ser_msg[1].serialize())
+                                sent_count += 1
                                 self.log.debug("Sent message: %s", ser_msg[1])
                                 # baud speed on the bus is 9600 and gateway usually have 57600
                                 # this means we need to watch out that the internal gateway buffer does not overflow
@@ -283,50 +312,45 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                                 self.transmit.task_done()
 
                     # read from bus
-                    self._buffer.extend( self.__serial.read_all() )
-
-                    # process received messages from bus
-                    error_buffer = []
-                    error_msg = ""
-                    while len(self._buffer) >= 14:
-                        try:
-                            raw_message = bytes(self._buffer[:14])
-
-                            # The adapter echoes transmitted frames. Drop only
-                            # a matching frame; unrelated telegrams remain
-                            # visible to listeners.
-                            if self._consume_echo(raw_message):
-                                self._buffer = self._buffer[14:]
-                                continue
-
-                            parsed_msg = prettify(ESP2Message.parse(raw_message))
-                            # self.log.debug("Received Message: %s", parsed_msg)
-                            
-                        except ParseError as e:
-                            error_buffer.append(self._buffer[0])
-                            error_msg = f"{type(e).__name__}: {e}"
-                            self._buffer = self._buffer[1:]
-                            
+                    # The parser owns framing and resynchronisation. Echo
+                    # suppression remains a transport policy and therefore
+                    # operates on the validated raw frame before prettifying.
+                    for raw_message in self._frame_parser.feed(self.__serial.read_all()):
+                        if self._consume_echo(raw_message):
+                            continue
+                        parsed_msg = prettify(ESP2Message.parse(raw_message))
+                        callback = self.__callback
+                        if callback is None:
+                            self.receive.put(parsed_msg)
+                            received_count += 1
                         else:
-                            # log out broken messages
-                            if len(error_buffer) > 0:
-                                self.log.error(f"{error_msg} for: {b2s(bytes(error_buffer))}")
-                                error_buffer = []
+                            # Invoke callbacks after leaving the mutex.
+                            callbacks.append((callback, parsed_msg))
+                    for parse_error in self._frame_parser.pop_errors():
+                        self.log.error("ESP2 frame discarded: %s", parse_error)
 
-                            self._buffer = self._buffer[14:]
-                            if self.__callback is None:
-                                self.receive.put(parsed_msg)
-                            else: 
-                                try:
-                                    self.__callback(parsed_msg)
-                                except Exception:
-                                    self.log.exception("Serial receive callback failed")
+                if connection_state_change is not None:
+                    self._fire_status_change_handler(connection_state_change)
+                if self.metrics is not None:
+                    if sent_count:
+                        self.metrics.record_message("sent", sent_count)
+                    if received_count:
+                        self.metrics.record_message("received", received_count)
+                for callback, parsed_msg in callbacks:
+                    try:
+                        callback(parsed_msg)
+                        if self.metrics is not None:
+                            self.metrics.record_message("received")
+                    except Exception:
+                        self.log.exception("Serial receive callback failed")
 
                 # required to not utilize the whole CPU power
                 time.sleep(.00001)
                 
 
             except (serial.SerialException, IOError) as e:
+                if self.metrics is not None and not self.is_serial_connected.is_set():
+                    self.metrics.record_reconnect_failure()
                 self._fire_status_change_handler(connected=False)
                 self.is_serial_connected.clear()
                 self.log.exception(e)
@@ -371,8 +395,17 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
         if self.__callback is not None:
             raise RuntimeError("exchange is not reentrant, please serialize your access to the bus yourself.")
 
-        send_time = 0
+        if timeout < 0:
+            raise ValueError("timeout must not be negative")
+
         while retries > 0:
+            # Do not put a request on a queue that no worker can ever drain.
+            # Returning ``None`` keeps the historical V2 timeout result while
+            # making exchanges before start() and after stop() bounded.
+            if self._stop_flag.is_set() or not self.is_alive():
+                return None
+
+            deadline = time.monotonic() + timeout
 
             with self.__mutex:
                 # empty queue
@@ -380,12 +413,22 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                     self.receive.get()
 
                 # send request
-                send_time = time.time()
                 self._send(request)
 
             while self.transmit.unfinished_tasks > 0:
-                # required to not utilize the whole CPU power
-                await asyncio.sleep(.00001) 
+                if self._stop_flag.is_set() or not self.is_alive():
+                    return None
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                # Yield without busy-spinning and never sleep past the
+                # exchange deadline.
+                await asyncio.sleep(min(0.001, remaining))
+
+            if time.monotonic() >= deadline:
+                self.log.debug("Retry sending message. Timeout (%ss) reached.", timeout)
+                retries -= 1
+                continue
 
             # receive response
             while True:
@@ -402,13 +445,14 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                     pass
 
                 # retry
-                if time.time() - send_time > timeout:
+                if time.monotonic() >= deadline:
                     self.log.debug("Retry sending message. Timeout (%ds) reached.", timeout)
                     retries = retries-1
                     break
 
-                # required to not utilize the whole CPU power
-                await asyncio.sleep(.00001)
+                # Yield without busy-spinning and never sleep past the
+                # exchange deadline.
+                await asyncio.sleep(min(0.001, deadline - time.monotonic()))
 
 
 
@@ -418,7 +462,8 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
     Note that this relies on the UART to be configured to drive the bus only
     when data is being sent, as for example done by the Digitus adapters.
     """
-    def __init__(self, filename, suppress_echo=None, log=None, baud_rate=57600):
+    def __init__(self, filename, suppress_echo=None, log=None, baud_rate=57600,
+                 *, metrics: TransportMetrics | None = None):
         self._filename = filename
 
         self.received = asyncio.Queue()
@@ -432,15 +477,19 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
         self.transport = None
 
         self._buffer = b''
+        self._frame_parser = ESP2FrameParser()
         # a single future waiting for the buffer to reach a certain level. Only
         # one is supported: we don't need two futures racing for who gets to
         # snatch the first bytes off the buffer
         self._buffer_request = None
         self._buffer_request_level = 0
         self.baud_rate = baud_rate
+        self.metrics = metrics
 
     def connection_made(self, transport):
         self.transport.set_result(transport)
+        if self.metrics is not None:
+            self.metrics.record_connection(True)
 
     def data_received(self, d):
         self._buffer += d
@@ -456,6 +505,8 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
 
     def connection_lost(self, exc):
         self.transport = None
+        if self.metrics is not None:
+            self.metrics.record_connection(False, reason=str(exc) if exc else None)
         if self._buffer_request is not None and not self._buffer_request.done():
             self._buffer_request.set_exception(exc or EOFError())
 
@@ -478,6 +529,7 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
         for write_attempt in range(5):
             # flush input
             self._buffer = b""
+            self._frame_parser.reset()
 
             self.transport.write(echotest)
 
@@ -546,40 +598,35 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
 
         while True:
             await self.await_bufferlevel(14)
-
-            while len(self._buffer) >= 14:
+            chunk, self._buffer = self._buffer, b""
+            for raw in self._frame_parser.feed(chunk):
                 if self.suppress_echo:
-                    # purge entries older than 3s, they might have had
-                    # collisions and thus did not report correctly
+                    # Purge entries older than 3s; they might have collided
+                    # and therefore never reported correctly.
                     while self._suppress and self._suppress[0][0] < time.time() - 3:
                         self.log.info("Dropping echo-suppressed message because it timed out without being echoed")
                         self._suppress.pop(0)
-                    found_i = None
-                    for i, (t, suppressed) in enumerate(self._suppress):
-                        if self._buffer[:14] == suppressed:
-                            found_i = i
-                            break
+                    found_i = next(
+                        (i for i, (_, suppressed) in enumerate(self._suppress)
+                         if raw == suppressed),
+                        None,
+                    )
                     if found_i is not None:
                         if found_i > 0:
                             self.log.info("Dropping %d echo-suppressed message(s) because a later sent message was already received" % found_i)
-                        # block is not part of the if-condition in the loop
-                        # because it would invalidate the iterator (that'd be
-                        # OK as we're breaking) but also needs to continue on
-                        # the outer loop
                         del self._suppress[:found_i + 1]
-                        self._buffer = self._buffer[14:]
                         continue
 
-                try:
-                    parsed = ESP2Message.parse(self._buffer[:14])
-                except ParseError:
-                    self._buffer = self._buffer[1:]
-                else:
-                    self._buffer = self._buffer[14:]
-
-                    if self._hook is not None and self._hook(parsed):
-                        continue # swallowed by the hook
-                    await self.received.put(parsed)
+                parsed = ESP2Message.parse(raw)
+                if self._hook is not None and self._hook(parsed):
+                    if self.metrics is not None:
+                        self.metrics.record_message("received")
+                    continue  # swallowed by the hook
+                await self.received.put(parsed)
+                if self.metrics is not None:
+                    self.metrics.record_message("received")
+            for parse_error in self._frame_parser.pop_errors():
+                self.log.warning("ESP2 frame discarded: %s", parse_error)
 
     async def exchange(self, request, responsetype=None):
         """Send a request and return a response depending on responsetype as
@@ -641,5 +688,7 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
         if self.transport is None or isinstance(self.transport, asyncio.Future):
             raise ConnectionError("Serial transport is not connected")
         self.transport.write(serialized)
+        if self.metrics is not None:
+            self.metrics.record_message("sent")
 
     base_exchange = None

@@ -24,9 +24,18 @@ as well as reading and writing the bus participants' memory
 Developer documentation
 -----------------------
 
+The [documentation index](docs/INDEX.md) is the central entry point and groups
+the guides by user, application, protocol, testing and release tasks.
+
 The [developer guide](docs/DEVELOPER_GUIDE.md) covers installation, serial and
 CoAP transports, asynchronous bus access, discovery, device and EEP APIs,
 locking, caching, the command-line tool, offline testing, and extension points.
+The [gateway overview](docs/GATEWAYS.md) compares supported gateway families,
+protocols, transports, baud rates and usage examples.
+The [ESP2 tutorial](docs/TUTORIAL_ESP2.md) and [ESP3 tutorial](docs/TUTORIAL_ESP3.md)
+show complete protocol-level examples, including LAN discovery and offline
+ESP3 decoding.
+The [user guide](docs/USER_GUIDE.md) provides a short operational quick start.
 The [release guide](docs/RELEASING.md) documents version selection, local
 verification, tagging, GitHub Releases, and PyPI publication.
 
@@ -38,6 +47,8 @@ on Home Assistant.
 
 The complete [EEP reference](docs/EEP_REFERENCE.md) lists all implemented
 profiles, organizations, fields, units, and value ranges.
+The [D2 v2 migration guide](docs/D2_EEP_MIGRATION.md) explains the correction
+of the formerly mislabeled D2-00-01 window-sensor decoder.
 
 The [A5-38-08 command guide](docs/A5_38_08_COMMANDS.md) describes all
 supported central switching, dimming, HVAC, fan and blind/shutter commands.
@@ -45,6 +56,22 @@ supported central switching, dimming, HVAC, fan and blind/shutter commands.
 The [library roadmap](docs/ROADMAP.md) records planned protocol, EEP,
 diagnostic and testing improvements and clarifies which integration-specific
 features intentionally do not belong in this repository.
+The [roadmap status](docs/ROADMAP_STATUS.md) records completed milestones,
+validation results, the active iteration and the procedure for continuing work.
+
+The [ESP3 framing guide](docs/ESP3_FRAMING.md), [VLD field guide](docs/VLD_FIELDS.md)
+and [reference comparison](docs/REFERENCE_COMPARISON.md) document the new
+protocol-layer architecture.
+The [ESP2 framing guide](docs/ESP2_FRAMING.md) documents the shared parser used
+by the TCP and RS485 transports.
+The [ESP2 message parser guide](docs/MESSAGE_PARSER.md) documents deterministic
+message classification without probing decoder classes through exceptions.
+The [ESP3 dispatcher guide](docs/ESP3_DISPATCHER.md) documents typed native
+ESP3 packets, serialized command handling, and diagnostics. The opt-in
+[EEP schema guide](docs/EEP_SCHEMA.md) documents compatibility-safe D2 schema
+migration.
+The [UTE session guide](docs/UTE_SESSION.md) documents explicit, fail-closed
+teach-in decisions and the separate opt-in learned-device registry.
 
 Quick start
 -----------

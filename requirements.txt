@@ -5,8 +5,7 @@ aiocoap >= 0.4.17, < 1
 PyYAML
 pyxdg
 
-# Optional ESP3/EnOcean gateway support
-enocean >= 0.60.1
+# Optional passive LAN gateway discovery
 zeroconf
 
 # Test and distribution tooling

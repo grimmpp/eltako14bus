@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import functools
+import json
 import os
 import time
 import sys
@@ -12,10 +13,45 @@ import logging
 from typing import Optional
 
 import xdg.BaseDirectory
+import serial as pyserial
+import serial_asyncio
 
 from eltakobus import *
 from eltakobus.eep import *
 from eltakobus.locking import buslocked
+
+
+def lan_gateway_scan(*, wait_seconds=2.0, as_json=False, discovery_factory=LanGatewayDiscovery):
+    """Passively discover LAN gateways through mDNS and print the result."""
+    if wait_seconds < 0:
+        raise ValueError("wait_seconds must not be negative")
+    discovery = discovery_factory()
+    try:
+        discovery.start()
+        if wait_seconds:
+            time.sleep(wait_seconds)
+        services = [
+            {
+                "name": service.name,
+                "hostname": service.hostname,
+                "ipv4_address": service.ipv4_address,
+                "port": service.port,
+                "service_type": service.service_type,
+                "gateway_device_type": service.gateway_device_type.value,
+                "endpoint": list(service.endpoint) if service.endpoint else None,
+            }
+            for service in discovery.services
+        ]
+        if as_json:
+            print(json.dumps(services, indent=2, sort_keys=True))
+        elif services:
+            for service in services:
+                print("{name}: {gateway_device_type} {endpoint} ({service_type})".format(**service))
+        else:
+            print("No LAN gateways discovered.")
+        return services
+    finally:
+        discovery.stop()
 
 async def enumerate_bus(bus, *, limit_ids=None):
     """Search the bus for devices, yield bus objects for every match"""
@@ -123,7 +159,7 @@ async def fakefam(bus, serverdevice, baud_rate=57600):
         writer = asyncio.StreamWriter(transport, protocol, reader, loop)
         await run_fakefam(bus, reader, writer)
         return
-    except serial.serialutil.SerialException:
+    except pyserial.serialutil.SerialException:
         pass
 
     conn_end = asyncio.Future()
@@ -540,6 +576,7 @@ examples:
   eltakotool.py --eltakobus /dev/ttyUSB0 enumerate
   eltakotool.py --eltakobus /dev/ttyUSB0 --baud_rate 9600 show_off
   eltakotool.py --eltakobus /dev/ttyUSB0 benchmark 5 --messages 20
+  eltakotool.py lan_scan --wait 3 --json
   eltakotool.py --eltakobus /dev/ttyUSB0 dump bus.yaml
   eltakotool.py --eltakobus /dev/ttyUSB0 verify bus.yaml
 
@@ -607,6 +644,14 @@ def build_arg_parser():
         "--messages", type=int, default=10,
         help="Requests per delay candidate (default: %(default)s)",
     )
+
+    p_lan_scan = subp.add_parser(
+        "lan_scan", help="Passively discover LAN gateways via mDNS/Zeroconf"
+    )
+    p_lan_scan.add_argument("--wait", type=float, default=2.0,
+                            help="Seconds to listen for mDNS services (default: 2)")
+    p_lan_scan.add_argument("--json", action="store_true", dest="as_json",
+                            help="Print discovered services as JSON")
     p_benchmark.add_argument(
         "--delays", type=parse_benchmark_delays,
         default=DEFAULT_BENCHMARK_DELAYS,
@@ -643,6 +688,13 @@ def main():
 
     if opts.command is None:
         p.error("A command is required.")
+
+    if opts.command == "lan_scan":
+        try:
+            lan_gateway_scan(wait_seconds=opts.wait, as_json=opts.as_json)
+        except RuntimeError as exc:
+            p.error(str(exc))
+        return
 
     transport_error = check_conflicting_transport_opts(opts)
     if transport_error is not None:

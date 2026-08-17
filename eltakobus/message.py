@@ -2,8 +2,7 @@ from .error import ParseError
 from .util import b2a, b2s
 
 def prettify(message):
-    """Given a ESP2Message, try parsing this as all the known message classes
-    and return the parsing result if it matches.
+    """Return the most specific decoder selected by :func:`classify_message`.
 
     Only use this for displaying messages during debugging; when driving your
     application logic, you should have a good idea of which messages you'd
@@ -11,17 +10,20 @@ def prettify(message):
     prettify() to hand you the class you expect, later changes to the list of
     supported messages might give you a subtype or something else
     unexpected."""
-    classes = [EltakoBusLock, EltakoBusUnlock, EltakoDiscoveryRequest,
-            EltakoDiscoveryReply, EltakoMemoryRequest, EltakoMemoryResponse,
-            EltakoTimeout, EltakoPoll, EltakoPollForced, EltakoWrappedRPS,
-            EltakoWrapped4BS, RPSMessage, Regular1BSMessage, Regular4BSMessage, TeachIn4BSMessage2,
-            EltakoMessage]
-
-    for c in classes:
-        try: return c.parse(message.serialize())
-        except ParseError: pass
-
-    return message
+    try:
+        serialized = message.serialize()
+    except (AttributeError, TypeError, ValueError):
+        return message
+    message_class = classify_message(serialized)
+    if message_class is None:
+        return message
+    try:
+        return message_class.parse(serialized)
+    except ParseError:
+        # Classification uses only stable wire-format markers.  A malformed
+        # payload is still returned as the lossless base message instead of
+        # making prettify part of the transport error path.
+        return message
 
 class ESP2Message:
     """A basic message in EnOcean Serial Protocol 2 serialization. The only
@@ -513,3 +515,82 @@ class EltakoTimeout(EltakoStaticMessage):
     is_request = False
     payload = b"\0\0\0\0\0\0\0\0"
     address = 0
+
+
+def _frame_body(data):
+    """Return a validated ESP2 body without raising for classification."""
+
+    try:
+        raw = bytes(data)
+    except (TypeError, ValueError):
+        return None
+    if len(raw) != 14 or raw[:2] != b"\xa5\x5a":
+        return None
+    body = raw[2:13]
+    if sum(body) % 256 != raw[13]:
+        return None
+    return body
+
+
+def classify_message(data):
+    """Select an ESP2 decoder from wire-format markers without exceptions.
+
+    The return value is a message class or ``None`` for an invalid or
+    unsupported frame.  This function deliberately does not validate all
+    semantic fields; the selected class' ``parse`` method remains responsible
+    for that.  It is therefore suitable for dispatch selection, while
+    :func:`prettify` remains a lossless debugging helper.
+
+    Classification is deterministic: a valid frame is inspected once using
+    its ``h_seq`` byte, ORG byte, request direction and the LRN bit for 4BS
+    teach-in.  It never probes decoder classes by catching their exceptions.
+    """
+
+    body = _frame_body(data)
+    if body is None:
+        return None
+
+    h_seq, org = body[0], body[1]
+    # RRT/TRT radio telegrams.  A 4BS LRN bit of zero is the supported
+    # Variation 2 teach-in form; all other 4BS values are regular data.
+    if h_seq in ((0 << 5) + 11, (3 << 5) + 11):
+        if org == RPSMessage.org:
+            return RPSMessage
+        if org == _1BSMessage.org:
+            return Regular1BSMessage
+        if org == _4BSMessage.org:
+            return TeachIn4BSMessage2 if not (body[5] & 0x08) else Regular4BSMessage
+        return ESP2Message
+
+    # RMT/TCT telegrams use the Eltako-specific ORG/address/payload layout.
+    if h_seq in ((4 << 5) + 11, (5 << 5) + 11):
+        is_request = h_seq == ((5 << 5) + 11)
+        if is_request:
+            if org == EltakoBusLock.org and body[10] == EltakoBusLock.address:
+                return EltakoBusLock
+            if org == EltakoBusUnlock.org and body[10] == EltakoBusUnlock.address:
+                return EltakoBusUnlock
+            if org == EltakoPoll.org and body[2:10] == EltakoPoll.payload:
+                return EltakoPoll
+            if org == EltakoPollForced.org and body[2:10] == EltakoPollForced.payload:
+                return EltakoPollForced
+            if org == EltakoDiscoveryRequest.org and body[2:10] == EltakoDiscoveryRequest.payload:
+                return EltakoDiscoveryRequest
+            if org == EltakoMemoryRequest.org and not any(body[2:9]):
+                return EltakoMemoryRequest
+        else:
+            if org == EltakoDiscoveryReply.org and body[10] == EltakoDiscoveryReply.address:
+                return EltakoDiscoveryReply
+            if org == EltakoMemoryResponse.org:
+                return EltakoMemoryResponse
+            if org == EltakoTimeout.org and body[2:10] == EltakoTimeout.payload:
+                return EltakoTimeout
+            if org == EltakoWrappedRPS.org and not any(body[3:6]):
+                return EltakoWrappedRPS
+            if org == EltakoWrapped1BS.org and not any(body[3:6]):
+                return EltakoWrapped1BS
+            if org == EltakoWrapped4BS.org:
+                return EltakoWrapped4BS
+        return EltakoMessage
+
+    return ESP2Message

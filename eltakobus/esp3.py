@@ -1,10 +1,15 @@
-"""Optional ESP3 conversion helpers for ESP2 gateway adapters.
+"""ESP3 conversion helpers for ESP2 gateway adapters.
 
-The core package does not require the third-party ``enocean`` package.  When
-it is installed, :class:`ESP3MessageAdapter` can create ESP3 ``Packet``
-instances from the library's ESP2 messages.  Incoming packets are converted
-defensively: malformed or unsupported packets are logged and ignored instead
-of terminating the communicator thread.
+The adapter is dependency-free by default.  Its outbound result deliberately
+has the historic packet attributes (``data``, ``optional``, ``rorg`` and
+``packet_type``), so existing gateway code can consume it without importing a
+third-party ESP3 implementation.  Applications that still need a concrete
+legacy ``enocean.protocol.packet.Packet`` can pass an explicit ``packet_factory``
+or use :meth:`ESP3MessageAdapter.legacy_enocean_packet_factory` after installing
+that package themselves.
+
+Incoming packets are converted defensively: malformed or unsupported packets
+are logged and ignored instead of terminating the communicator thread.
 """
 
 import logging
@@ -12,21 +17,55 @@ import logging
 from .message import ESP2Message, RPSMessage, Regular1BSMessage, Regular4BSMessage, VLDMessage, prettify
 
 
+class _NativeESP3Packet:
+    """Small enocean-compatible RADIO_ERP1 packet shape.
+
+    This is intentionally private: callers should generally use the native
+    ``RadioTelegram`` and ESP3 packet models.  It exists to preserve the
+    attribute-level contract of the old adapter return value without making
+    the dependency-free core instantiate a third-party class.
+    """
+
+    packet_type = 1
+
+    def __init__(self, data, optional):
+        self.data = list(data)
+        self.optional = list(optional)
+        self.rorg = self.data[0] if self.data else None
+
+
+def _native_packet_factory(data, optional):
+    return _NativeESP3Packet(data, optional)
+
+
 class ESP3MessageAdapter:
-    """Translate between ESP2 messages and enocean-compatible ESP3 packets."""
+    """Translate between ESP2 messages and ESP3 RADIO_ERP1 packet shapes."""
 
     def __init__(self, logger=None):
         self.log = logger or logging.getLogger("eltakobus.esp3")
 
     @staticmethod
-    def _enocean_types():
+    def legacy_enocean_packet_factory():
+        """Return a factory producing legacy ``enocean`` Packet objects.
+
+        ``enocean`` is no longer a project dependency.  This opt-in helper is
+        kept for applications that still integrate directly with that
+        library; install it in the application environment before calling
+        this method.  The normal adapter path never imports it.
+        """
         try:
             from enocean.protocol.packet import PACKET, Packet, RORG
         except ImportError as exc:
             raise RuntimeError(
-                "ESP3 support requires the optional 'enocean' dependency"
+                "legacy enocean support requires installing the 'enocean' "
+                "package in the application environment"
             ) from exc
-        return Packet, PACKET, RORG
+
+        def factory(data, optional):
+            return Packet(PACKET.RADIO_ERP1, data, optional)
+
+        factory.rorgs = RORG
+        return factory
 
     def convert_esp2_to_esp3(self, message, packet_factory=None):
         """Return an ESP3 RADIO_ERP1 packet or ``None`` for unsupported input.
@@ -35,18 +74,13 @@ class ESP3MessageAdapter:
         destination, signal quality, and security level.  The final security
         byte is required by the ESP3 specification even when it is zero.
         """
+        # Numeric ESP3 values are part of the wire protocol.  An explicit
+        # factory remains the compatibility hook for enocean or other packet
+        # implementations.
         if packet_factory is None:
-            Packet, packet_types, rorgs = self._enocean_types()
-            packet_factory = lambda data, optional: Packet(
-                packet_types.RADIO_ERP1, data, optional
-            )
-            radio_erp1 = packet_types.RADIO_ERP1
-            rorg_rps, rorg_bs1, rorg_bs4 = rorgs.RPS, rorgs.BS1, rorgs.BS4
-        else:
-            # Test doubles can provide a simple factory without importing
-            # enocean.  Numeric ESP3 values are part of the wire protocol.
-            radio_erp1 = 1
-            rorg_rps, rorg_bs1, rorg_bs4 = 0xF6, 0xD5, 0xA5
+            packet_factory = _native_packet_factory
+        radio_erp1 = 1
+        rorg_rps, rorg_bs1, rorg_bs4 = 0xF6, 0xD5, 0xA5
 
         try:
             if isinstance(message, RPSMessage):

@@ -6,7 +6,7 @@ extras_require = {
     # aiocoap 0.4a1 uses the removed asyncio.coroutine API and is not
     # compatible with the Python versions supported by this project.
     'coap': ['aiocoap >= 0.4.17, < 1'],
-    'esp3': ['enocean >= 0.60.1', 'zeroconf'],
+    'discovery': ['zeroconf'],
     # Not usable yet as it's not exported via an entry point
     'eltakotool': ['pyyaml', 'pyxdg'],
 }
@@ -16,7 +16,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="eltako14bus",
-    version="1.0.1",
+    version="2.0.0rc1",
     author="chrysn, grimmpp",
     author_email="chrysn@fsfe.org, grimmpp14@gmail.com",
     description="Library for participating in the Eltako Series 14 RS485 bus",

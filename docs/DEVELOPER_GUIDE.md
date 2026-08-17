@@ -60,6 +60,18 @@ time. This means message parsing, passive port discovery, and identity parsing
 can be used in a minimal installation; install the corresponding extras before
 using `CoAPInterface` or YAML device helpers.
 
+Serial transports are optional in the same way. Importing `eltakobus` or using
+EEP/message functionality does not require `pyserial` or `pyserial-asyncio`.
+Install the serial extra before importing `eltakobus.serial` or resolving the
+legacy package-level transport names:
+
+```sh
+python -m pip install 'eltakobus[serial]'
+```
+
+Without that extra, an explicit serial transport import raises an actionable
+`ImportError`; the core package remains usable.
+
 ## Architecture
 
 The public package re-exports the main modules from `eltakobus.__init__`, so
@@ -78,6 +90,13 @@ The layers are:
    discovery replies into typed devices with memory and actuator helpers.
 5. **EEP model** — EEP classes encode and decode application data such as
    switch, temperature, humidity, and actuator telegrams.
+
+The shared `ESP2FrameParser` sits between byte-oriented transports and the
+message model. It validates the fixed 14-byte ESP2 envelope, handles fragmented
+reads and resynchronises after noise or a bad checksum. Both the recommended
+threaded V2 transport and the legacy asyncio protocol use this boundary. The
+parser returns raw frames; message-specific parsing remains the responsibility
+of `ESP2Message.parse()` or `prettify()`.
 
 All bus I/O is asynchronous. The serial V2 transport itself runs a worker
 thread, but its public API is still awaited from the application's event loop.
@@ -189,13 +208,10 @@ asyncio.run(main())
 It handles fragmented/coalesced 14-byte ESP2 frames, unsolicited frames via
 `bus.received` or `set_callback()`, clean shutdown, and automatic reconnect.
 The `socket_factory` argument lets unit tests provide a socket-like double.
-The ESP3/EnOcean dependency is intentionally not imported by the core package;
-an ESP3 radio can be used when the external project provides the ESP2 endpoint.
-
-For applications that directly use an ESP3 communicator, install the optional
-dependency with `python -m pip install -e '.[esp3]'` and use
-`ESP3MessageAdapter`. It adds the ESP3 RADIO_ERP1 Security-Level byte and
-isolates conversion errors:
+The ESP3 implementation is native and does not require the historic third-
+party `enocean` package. An ESP3 radio can be used when the transport provides
+the ESP3 endpoint. `ESP3MessageAdapter` adds the ESP3 RADIO_ERP1 Security-Level
+byte and isolates conversion errors:
 
 ```python
 from eltakobus.esp3 import ESP3MessageAdapter
@@ -205,6 +221,13 @@ adapter = ESP3MessageAdapter()
 # In the ESP3 receive callback. Invalid packets return None and are logged.
 converted = adapter.handle_packet(packet, callback, translate=True)
 ```
+
+`convert_esp2_to_esp3()` returns a dependency-free packet-shaped object with
+the legacy attributes `data`, `optional`, `rorg`, and `packet_type`. Existing
+applications that require an actual legacy `enocean.protocol.packet.Packet`
+must install `enocean` themselves and pass its constructor as `packet_factory`,
+or call `ESP3MessageAdapter.legacy_enocean_packet_factory()`. This compatibility
+path is deliberately optional and is not installed or tested by the project.
 
 Do not let a conversion exception escape from an ESP3 receive worker. Unknown
 return codes, `WRONG_PARAM`, short payloads, unsupported RORGs, and callback
@@ -312,6 +335,23 @@ await bus.send(EltakoMessage(
 specific class's `parse()` method when the message type is known. `prettify()`
 is useful for logs and exploratory tools, but application logic should not
 depend on whichever subtype happens to be first in its parser list.
+
+For recordings, gateway adapters, or transport implementations, use the
+incremental parser directly:
+
+```python
+from eltakobus.esp2_frame import ESP2FrameParser
+
+parser = ESP2FrameParser()
+for raw_frame in parser.feed(incoming_chunk):
+    message = ESP2Message.parse(raw_frame)
+    handle(prettify(message))
+for error in parser.pop_errors():
+    logger.warning("Invalid ESP2 frame ignored: %s", error)
+```
+
+This is intentionally separate from semantic message decoding. Existing code
+that calls `ESP2Message.parse(serialized_bytes)` remains unchanged.
 
 ## Discovery and typed devices
 

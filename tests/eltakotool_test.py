@@ -11,6 +11,7 @@ requires the ``eltakotool`` extra in addition to ``serial``, since
 import asyncio
 import sys
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -137,6 +138,41 @@ class TestConflictingTransportOpts(unittest.TestCase):
     def test_exactly_one_transport_given_is_fine(self):
         opts = self.parser.parse_args(["--eltakobus", "/dev/ttyX", "enumerate"])
         self.assertIsNone(eltakotool.check_conflicting_transport_opts(opts))
+
+    def test_lan_scan_command_has_wait_and_json_options(self):
+        """LAN discovery is a standalone command and does not require a bus URI."""
+        opts = self.parser.parse_args(["lan_scan", "--wait", "0", "--json"])
+        self.assertEqual("lan_scan", opts.command)
+        self.assertEqual(0, opts.wait)
+        self.assertTrue(opts.as_json)
+
+    def test_lan_gateway_scan_uses_injected_discovery_without_network(self):
+        """The CLI formatter can be tested with a passive discovery double."""
+        class FakeDiscovery:
+            def start(self):
+                pass
+
+            @property
+            def services(self):
+                return (SimpleNamespace(
+                    name="Virtual-Network-Gateway-Adapter-1",
+                    hostname="gateway.local",
+                    ipv4_address="192.0.2.10",
+                    port=5000,
+                    service_type="_bsc-sc-socket._tcp.local.",
+                    gateway_device_type=SimpleNamespace(value="lan-gw-esp2"),
+                    endpoint=("192.0.2.10", 5000),
+                ),)
+
+            def stop(self):
+                pass
+
+        with patch("builtins.print") as output:
+            result = eltakotool.lan_gateway_scan(
+                wait_seconds=0, as_json=True, discovery_factory=FakeDiscovery
+            )
+        self.assertEqual("lan-gw-esp2", result[0]["gateway_device_type"])
+        output.assert_called_once()
         opts = self.parser.parse_args(["--rawuri", "coap://x", "enumerate"])
         self.assertIsNone(eltakotool.check_conflicting_transport_opts(opts))
 

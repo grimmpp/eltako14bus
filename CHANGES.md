@@ -2,9 +2,52 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
-## Unreleased
+## 2.0.0rc1
+
+This release candidate contains the first protocol-focused v2 line. Existing
+ESP2 message classes and their established constructors remain available; the
+D2 correction below requires the documented migration for callers that used
+the old mislabeled decoder.
+
+### Fixed
+
+- Corrected the former `D2-00-01` decoder, which actually implemented the
+  `D2-06-01` window-handle and multisensor layout. The sensor decoder is now
+  registered as `D2-06-01`; the standards-correct `D2-00-01` decoder supports
+  documented room-control-panel messages A through E with corrected byte order.
+- Changed FMMS44SB/FMS55SB/FMS55ESB/FMS65ESB catalog defaults to `D2-14-41`
+  and exposed their documented NFC-selectable D2 alternatives as extra rows.
 
 ### Documentation and tests
+
+- Added passive LAN gateway discovery for the `SmartConn`, `EUL` and
+  `Virtual-Network-Gateway-Adapter` mDNS services. The optional `discovery`
+  extra uses `zeroconf`; imports remain dependency-free until discovery starts.
+- Added ESP2/ESP3 tutorials, runnable examples and the `eltakotool.py
+  lan_scan` command for JSON or human-readable LAN gateway discovery.
+- Added a read-only `examples/esp3_usb_stream.py` example for decoding native
+  ESP3 packets directly from a USB serial port without `enocean`.
+- Extended passive transport diagnostic snapshots with opt-in cumulative
+  `TransportMetrics` data when a transport was explicitly instrumented.
+- Made the changelog update an explicit required exit criterion for every
+  roadmap iteration, including documentation, test and refactoring rounds.
+- Added an explicit JSON-backed `LearnedDeviceRegistry` for accepted UTE
+  associations with versioned schema validation and atomic persistence.
+- Added `docs/INDEX.md` as the structured documentation entry point with
+  recommended reading paths and short descriptions of all guides.
+- Aligned the roadmap and UTE documentation with the new opt-in persistence
+  boundary: storage is available, while authorization and secure teach-in stay
+  explicit application responsibilities.
+- Reworked mixed ESP2 message classification to select decoders from validated
+  wire-format markers instead of probing every message class with exceptions.
+- Added a gateway overview covering FAM14, FGW14-USB, FAM-USB, USB300, ESP3,
+  LAN, ESP2-over-TCP and CoAP transports, including baud rates, capabilities,
+  usage examples and the passive LAN discovery boundary.
+- Removed the obsolete `enocean` runtime/development dependency and the unused
+  ESP3 extra. Native ESP3 framing, packet models and radio conversion are now
+  the supported path. `ESP3MessageAdapter` keeps its public conversion methods
+  and packet attributes; applications needing a concrete legacy `enocean`
+  packet can opt in with an explicit factory after installing that package.
 
 - Documented the A5-38-08 switching lock semantics directly in the EEP code,
   metadata reference, and regression tests.
@@ -13,6 +56,37 @@ This project adheres to [Semantic Versioning](http://semver.org/).
   with backward-compatible encode/decode tests.
 - Added a detailed library roadmap covering ESP3, VLD, transactions, teach-in,
   virtual-bus testing, diagnostics and project boundaries.
+- Added a persistent roadmap status and hand-off document describing the
+  implementation state, validation baseline and continuation procedure.
+- Documented recurring refactoring checkpoints as a required part of the
+  roadmap implementation methodology.
+- Documented the future folder-structure strategy: thematic subpackages may
+  be introduced with compatibility-preserving re-export shims for old imports.
+- Added a dependency-free declarative VLD field engine with strict encoding,
+  scaling, units, enums and explicit reserved/error values.
+- Added an incremental ESP3 framing parser with CRC validation, bounded input,
+  noise recovery and lossless raw packet sections.
+- Added a shared incremental ESP2 frame parser and refactored the ESP2 TCP and
+  threaded serial receivers to use it, preserving their public interfaces and
+  echo-suppression behavior.
+- Added architecture documentation comparing the implementation with the
+  independent `kipe/enocean` and `fruggy83/openocean` projects.
+- Added native ESP3 semantic packet models and a serialized asynchronous
+  dispatcher with response/event/radio separation and diagnostics.
+- Added opt-in compatibility schemas for D2-06-01, D2-14-40 and D2-14-41;
+  existing EEP classes and result objects remain unchanged.
+- Added generic UTE query/response models and an explicit fail-closed teach-in
+  session; no automatic enrollment or response is performed by parsing alone.
+- Added safe opt-in memory sessions with dry-run, explicit confirmation,
+  read-back verification and best-effort rollback.
+- Added structured JSON-serializable diagnostics snapshots and a provenance-
+  aware offline conformance-vector test framework.
+- Added opt-in declarative D2-00-01 schemas for variants A-E without changing
+  the existing decoder API.
+- Added passive LAN-gateway mDNS discovery for SmartConn, EUL and
+  Virtual-Network-Gateway-Adapter. Zeroconf is lazy and available only through
+  the optional `discovery` extra; discovery never opens a gateway connection or
+  sends telegrams.
 
 ## 1.0.1
 

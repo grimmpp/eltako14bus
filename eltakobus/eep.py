@@ -2833,11 +2833,12 @@ def _linear_or_none(raw, maximum, minimum, physical_max):
     return None if raw > maximum else minimum + (raw / float(maximum)) * (physical_max - minimum)
 
 
-class D2_00_01(EEP):
-    """RCP/window handle controller with temperature and environment data."""
-    metadata = EEPMetadata("", "RCP with temperature measurement and display",
-        "Bidirectional controller status including handle, window, buttons, temperature, humidity, illumination and battery state.", 0xD2, (
-        EEPFieldMetadata("message_type", "VLD message type.", data_type="integer", value_range=(0, 255)),
+class D2_06_01(EEP):
+    """Multisensor window handle, alarm and optional environment sensors."""
+    metadata = EEPMetadata("", "Multisensor window handle",
+        "Window-handle, alarm, button and optional environment sensor values.", 0xD2, (
+        EEPFieldMetadata("message_type", "VLD message type; only sensor values are decoded.",
+                         data_type="enum", values={0: "sensor values"}),
         EEPFieldMetadata("burglary_alarm", "Burglary alarm state.", data_type="enum", values={0: "not triggered", 1: "triggered", 14: "invalid", 15: "unsupported"}),
         EEPFieldMetadata("protection_alarm", "Protection-plus alarm state.", data_type="enum", values={0: "not triggered", 1: "triggered", 14: "invalid", 15: "unsupported"}),
         EEPFieldMetadata("handle_position", "Window-handle position.", data_type="enum", values={0: "undefined", 1: "up", 2: "down", 3: "left", 4: "right", 14: "invalid", 15: "unsupported"}),
@@ -2855,7 +2856,8 @@ class D2_00_01(EEP):
     def decode_message(cls, msg):
         data = _vld_message_data(msg, 10)
         if data[0] != 0:
-            raise NotImplementedError
+            raise NotImplementedError(
+                "D2-06-01 message type 0x%02X is not implemented; only sensor values 0x00 are supported" % data[0])
         raw_temperature = _vld_bits(data, 40, 8)
         raw_humidity = _vld_bits(data, 48, 8)
         raw_illumination = _vld_bits(data, 56, 16)
@@ -2870,6 +2872,160 @@ class D2_00_01(EEP):
             battery_state=None if _vld_bits(data, 72, 5) > 20 else _vld_bits(data, 72, 5) * 5,
             temperature_raw=raw_temperature, humidity_raw=raw_humidity,
             illumination_raw=raw_illumination, battery_state_raw=_vld_bits(data, 72, 5))
+
+    def __init__(self, **values):
+        for name, value in values.items(): setattr(self, name, value)
+
+
+class D2_00_01_LegacyWindowHandle(D2_06_01):
+    """Compatibility name for the pre-v2 decoder that was labelled D2-00-01.
+
+    The old implementation actually decoded the D2-06-01 sensor-values
+    layout.  This deliberately non-EEP-shaped class name keeps it out of the
+    EEP registry while giving affected callers an explicit migration path.
+    New code should use :class:`D2_06_01`.
+    """
+
+
+class D2_00_01(EEP):
+    """Bidirectional room-control-panel messages A through E.
+
+    This decoder follows the corrected byte order published with EEP 2.6.8.
+    It decodes the five documented message IDs but does not implement Smart
+    Ack timing, chaining or transmission; those belong to a transaction layer.
+    """
+    metadata = EEPMetadata("", "RCP with temperature measurement and display",
+        "Bidirectional room-control-panel messages with user actions, display content, measurements and configuration.", 0xD2, (
+        EEPFieldMetadata("message_id", "Message ID in the low three bits of the first byte.", data_type="enum",
+                         values={1: "A - first user action", 2: "B - display content",
+                                 3: "C - repeated user action", 4: "D - measurement result",
+                                 5: "E - sensor configuration"}),
+        EEPFieldMetadata("message_type", "Human-readable message variant A through E.", data_type="string"),
+        EEPFieldMetadata("direction", "Direction defined by the profile.", data_type="string"),
+        EEPFieldMetadata("config_valid", "Whether the RCP has valid configuration data.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("user_action", "First user action code.", data_type="enum",
+                         values={0: "not used", 1: "presence", 2: "set point down",
+                                 5: "set point up", 6: "fan"}),
+        EEPFieldMetadata("fan_manual", "Whether manual fan operation is displayed.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("fan_speed", "Displayed or selected fan-speed code.", data_type="integer", value_range=(0, 7)),
+        EEPFieldMetadata("more_data", "Whether another chained gateway message follows.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("presence", "Displayed or selected presence code.", data_type="integer", value_range=(0, 7)),
+        EEPFieldMetadata("figure_type", "Display figure type code.", data_type="integer", value_range=(0, 31)),
+        EEPFieldMetadata("figure_value_raw", "Unscaled little-endian display value.", data_type="integer", value_range=(0, 65535)),
+        EEPFieldMetadata("figure_value", "Display value scaled according to figure_type.", data_type="number"),
+        EEPFieldMetadata("user_notification", "Optional user-notification display symbol.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("window_open", "Optional open-window display symbol.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("no_dew_point_warning", "Optional dew-point symbol state; false means warning.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("cooling", "Optional cooling display symbol.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("heating", "Optional heating display symbol.", data_type="boolean", value_range=(0, 1)),
+        EEPFieldMetadata("setpoint_type", "Repeated user-action set-point type.", data_type="integer", value_range=(0, 31)),
+        EEPFieldMetadata("setpoint_raw", "Signed little-endian set-point value in hundredths of a degree.", data_type="integer", value_range=(-32768, 32767)),
+        EEPFieldMetadata("setpoint", "Repeated set-point adjustment when type 5 is used.", "°", (-12.7, 12.7)),
+        EEPFieldMetadata("channel_type", "Measurement channel type; zero denotes temperature.", data_type="integer", value_range=(0, 15)),
+        EEPFieldMetadata("measurement_raw", "Unscaled 12-bit measurement value.", data_type="integer", value_range=(0, 4095)),
+        EEPFieldMetadata("measurement", "Temperature measurement when channel type 0 is used.", "°C", (0.0, 40.0)),
+        EEPFieldMetadata("setpoint_range_raw", "Raw symmetrical set-point range in tenths of a degree.", data_type="integer", value_range=(0, 127)),
+        EEPFieldMetadata("setpoint_range", "Symmetrical set-point range configured by message E.", "°", (0.1, 12.7)),
+        EEPFieldMetadata("setpoint_steps", "Number of set-point steps between zero and the range limit.", data_type="integer", value_range=(0, 127)),
+        EEPFieldMetadata("measurement_interval_raw", "Raw six-bit temperature measurement interval.", data_type="integer", value_range=(0, 63)),
+        EEPFieldMetadata("measurement_interval", "Configured measurement interval; None means disabled or reserved.", "s", (10, 600)),
+        EEPFieldMetadata("presence_levels", "Number of presence levels available to the user.", data_type="integer", value_range=(0, 7)),
+        EEPFieldMetadata("fan_levels", "Number of fan-speed levels available to the user.", data_type="integer", value_range=(0, 7)),
+        EEPFieldMetadata("significant_temperature_difference", "Temperature change that triggers message D.", "°C", (0.0, 3.0)),
+        EEPFieldMetadata("keep_alive_measurements", "Measurements between keep-alive transmissions; zero means every measurement.", data_type="integer", value_range=(0, 70)),
+    ))
+
+    _MESSAGE_LENGTHS = {1: 2, 2: 5, 3: 4, 4: 3, 5: 6}
+    _MESSAGE_TYPES = {1: "A", 2: "B", 3: "C", 4: "D", 5: "E"}
+    _DIRECTIONS = {
+        1: "sensor_to_gateway", 2: "gateway_to_sensor",
+        3: "sensor_to_gateway", 4: "sensor_to_gateway",
+        5: "gateway_to_sensor",
+    }
+
+    @staticmethod
+    def _require_zero(value, description):
+        if value:
+            raise ValueError("D2-00-01 %s must be zero" % description)
+
+    @classmethod
+    def decode_message(cls, msg):
+        data = _vld_message_data(msg, 1)
+        message_id = data[0] & 0x07
+        if message_id not in cls._MESSAGE_LENGTHS:
+            raise NotImplementedError(
+                "D2-00-01 message ID %d is not defined; supported IDs are 1 through 5" % message_id)
+        minimum = cls._MESSAGE_LENGTHS[message_id]
+        if len(data) < minimum:
+            raise ValueError(
+                "D2-00-01 message %s requires at least %d payload bytes" %
+                (cls._MESSAGE_TYPES[message_id], minimum))
+
+        common = {
+            "message_id": message_id,
+            "message_type": cls._MESSAGE_TYPES[message_id],
+            "direction": cls._DIRECTIONS[message_id],
+            "raw_data": data,
+        }
+
+        if message_id == 1:
+            cls._require_zero(data[0] & 0xF8, "message A header reserved bits")
+            cls._require_zero(data[1] & 0x60, "message A reserved bits")
+            return cls(config_valid=bool(data[1] & 0x80),
+                       user_action=data[1] & 0x1F, **common)
+
+        if message_id == 2:
+            figure_type = data[1] & 0x1F
+            figure_value_raw = int.from_bytes(data[2:4], "little")
+            figure_value = (figure_value_raw / 100.0
+                            if 1 <= figure_type <= 7 or figure_type in (14, 16)
+                            else figure_value_raw)
+            return cls(
+                fan_manual=bool(data[0] & 0x80), fan_speed=(data[0] >> 4) & 0x07,
+                more_data=bool(data[0] & 0x08), presence=(data[1] >> 5) & 0x07,
+                figure_type=figure_type, figure_value_raw=figure_value_raw,
+                figure_value=figure_value, user_notification=bool(data[4] & 0x10),
+                window_open=bool(data[4] & 0x08), no_dew_point_warning=bool(data[4] & 0x04),
+                cooling=bool(data[4] & 0x02), heating=bool(data[4] & 0x01), **common)
+
+        if message_id == 3:
+            cls._require_zero(data[0] & 0x88, "message C reserved bits")
+            setpoint_type = data[1] & 0x1F
+            setpoint_raw = int.from_bytes(data[2:4], "little", signed=True)
+            return cls(
+                fan_speed=(data[0] >> 4) & 0x07, presence=(data[1] >> 5) & 0x07,
+                setpoint_type=setpoint_type, setpoint_raw=setpoint_raw,
+                setpoint=setpoint_raw / 100.0 if setpoint_type == 5 and -1270 <= setpoint_raw <= 1270 else None,
+                **common)
+
+        if message_id == 4:
+            cls._require_zero(data[0] & 0xF8, "message D header reserved bits")
+            channel_type = (data[2] >> 4) & 0x0F
+            measurement_raw = data[1] | ((data[2] & 0x0F) << 8)
+            return cls(
+                channel_type=channel_type, measurement_raw=measurement_raw,
+                measurement=measurement_raw / 100.0
+                if channel_type == 0 and measurement_raw <= 4000 else None,
+                **common)
+
+        cls._require_zero(data[0] & 0xF0, "message E header reserved bits")
+        cls._require_zero(data[1] & 0x80, "message E set-point reserved bit")
+        cls._require_zero(data[2] & 0x80, "message E step-count reserved bit")
+        cls._require_zero(data[3] & 0x0F, "message E timing reserved bits")
+        cls._require_zero(data[5] & 0x08, "message E final reserved bit")
+        setpoint_range_raw = data[1] & 0x7F
+        measurement_interval_raw = ((data[4] & 0x03) << 4) | (data[3] >> 4)
+        return cls(
+            more_data=bool(data[0] & 0x08), setpoint_range_raw=setpoint_range_raw,
+            setpoint_range=setpoint_range_raw / 10.0 if setpoint_range_raw else None,
+            setpoint_steps=data[2] & 0x7F,
+            measurement_interval_raw=measurement_interval_raw,
+            measurement_interval=(measurement_interval_raw * 10
+                                  if 1 <= measurement_interval_raw <= 60 else None),
+            presence_levels=(data[4] >> 5) & 0x07, fan_levels=(data[4] >> 2) & 0x07,
+            significant_temperature_difference=((data[5] >> 4) & 0x0F) * 0.2,
+            keep_alive_measurements=(data[5] & 0x07) * 10,
+            **common)
 
     def __init__(self, **values):
         for name, value in values.items(): setattr(self, name, value)

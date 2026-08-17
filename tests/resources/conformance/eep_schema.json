@@ -1,0 +1,123 @@
+{
+  "format_version": 1,
+  "kind": "eep_schema",
+  "vectors": [
+    {
+      "id": "eep-regression-d2-06-01-sensor-values",
+      "status": "executable",
+      "provenance": {
+        "kind": "repository_regression",
+        "source": "tests/eep_schema_test.py",
+        "note": "Existing schema-parity fixture with one vendor-extension byte."
+      },
+      "eep": "D2-06-01",
+      "payload_hex": "00103000007d6404d2a0aa",
+      "expected_values": {
+        "message_type": 0,
+        "burglary_alarm": 1,
+        "handle_position": 3,
+        "temperature": 20.0,
+        "humidity": 50.0,
+        "illumination": 1234,
+        "battery_state": 100.0
+      }
+    },
+    {
+      "id": "eep-regression-d2-06-01-special-values",
+      "status": "executable",
+      "provenance": {
+        "kind": "repository_regression",
+        "source": "tests/eep_schema_test.py",
+        "note": "Existing reserved and out-of-range parity fixture."
+      },
+      "eep": "D2-06-01",
+      "payload_hex": "0000000000fbc9ea61a8",
+      "expected_values": {
+        "temperature": null,
+        "humidity": null,
+        "illumination": null,
+        "battery_state": null
+      },
+      "expected_status": {
+        "temperature": "reserved",
+        "humidity": "reserved",
+        "illumination": "unmapped",
+        "battery_state": "reserved"
+      }
+    },
+    {
+      "id": "eep-regression-d2-14-40-indoor-multisensor",
+      "status": "executable",
+      "provenance": {
+        "kind": "repository_regression",
+        "source": "tests/eep_schema_test.py",
+        "note": "Existing common D2-14 sensor payload."
+      },
+      "eep": "D2-14-40",
+      "payload_hex": "7d191d4c0800fa7d10",
+      "expected_values": {
+        "temperature": 10.0,
+        "humidity": 50.0,
+        "illumination": 60000,
+        "acceleration_status": 1,
+        "acceleration_x": -2.5,
+        "acceleration_y": 0.0,
+        "acceleration_z": 2.5
+      }
+    },
+    {
+      "id": "eep-regression-d2-14-41-indoor-multisensor-contact",
+      "status": "executable",
+      "provenance": {
+        "kind": "repository_regression",
+        "source": "tests/eep_schema_test.py",
+        "note": "Existing D2-14 payload with contact bit set."
+      },
+      "eep": "D2-14-41",
+      "payload_hex": "7d191d4c0800fa7d10",
+      "expected_values": {
+        "temperature": 10.0,
+        "humidity": 50.0,
+        "illumination": 60000,
+        "acceleration_status": 1,
+        "acceleration_x": -2.5,
+        "acceleration_y": 0.0,
+        "acceleration_z": 2.5,
+        "contact": true
+      }
+    },
+    {
+      "id": "eep-official-d2-06-01-example",
+      "status": "placeholder",
+      "provenance": {
+        "kind": "official_specification",
+        "document": "EnOcean Equipment Profiles specification",
+        "revision": "TBD",
+        "location": "TBD"
+      },
+      "gap": "Transcribe normal and special-value payloads from the selected authoritative EEP revision."
+    },
+    {
+      "id": "eep-official-d2-14-40-example",
+      "status": "placeholder",
+      "provenance": {
+        "kind": "official_specification",
+        "document": "EnOcean Equipment Profiles specification",
+        "revision": "TBD",
+        "location": "TBD"
+      },
+      "gap": "Transcribe boundary vectors for every implemented D2-14-40 field."
+    },
+    {
+      "id": "eep-official-d2-14-41-example",
+      "status": "placeholder",
+      "provenance": {
+        "kind": "official_specification",
+        "document": "EnOcean Equipment Profiles specification",
+        "revision": "TBD",
+        "location": "TBD"
+      },
+      "gap": "Transcribe D2-14-41 contact-open and contact-closed vectors."
+    }
+  ]
+}

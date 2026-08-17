@@ -8,6 +8,7 @@ from eltakobus.device_catalog import (
     describe_gateway_type,
     devices_for_eep,
     eep_device_mapping,
+    entries_for_hw_type,
     find_hw_type,
     normalize_hw_type,
 )
@@ -50,6 +51,21 @@ class DeviceCatalogTest(unittest.TestCase):
         all_entries = devices_for_eep('H5-3F-7F', include_sender=True)
         self.assertEqual([], received)
         self.assertTrue(any(entry['hw_type'] == 'FSB14' for entry in all_entries))
+
+    def test_multisensors_default_to_d21441_and_expose_d2_alternatives(self):
+        """Factory defaults stay first while NFC-selectable D2 profiles remain queryable."""
+        for hw_type in ('FMMS44SB', 'FMS55SB', 'FMS55ESB', 'FMS65ESB'):
+            with self.subTest(hw_type=hw_type):
+                self.assertEqual('D2-14-41', find_hw_type(hw_type)['eep'])
+                profiles = [entry['eep'] for entry in entries_for_hw_type(hw_type)]
+                self.assertEqual('D2-14-41', profiles[0])
+                self.assertIn('D2-14-40', profiles)
+
+        self.assertIn('D2-00-01',
+                      [entry['eep'] for entry in entries_for_hw_type('FMMS44SB')])
+        for hw_type in ('FMS55SB', 'FMS55ESB', 'FMS65ESB'):
+            self.assertNotIn('D2-00-01',
+                             [entry['eep'] for entry in entries_for_hw_type(hw_type)])
 
 
 if __name__ == '__main__':

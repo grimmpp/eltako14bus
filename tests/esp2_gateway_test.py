@@ -14,8 +14,10 @@ import time
 import unittest
 from pathlib import Path
 
+from eltakobus.error import TimeoutError
 from eltakobus.esp2_gateway import ESP2TCPSerialInterface
 from eltakobus.message import EltakoDiscoveryReply, EltakoDiscoveryRequest
+from eltakobus.transport_metrics import TransportMetrics
 
 
 def reply(address=1):
@@ -115,6 +117,37 @@ class TestESP2TCPSerialInterface(unittest.TestCase):
         bus.join(1)
         self.assertFalse(bus.is_alive())
 
+    def test_optional_metrics_cover_successful_io_and_connection_status(self):
+        """Fake TCP traffic updates metrics without changing the adapter API."""
+        metrics = TransportMetrics()
+        sockets = []
+
+        def factory(*args):
+            sock = FakeSocket(
+                on_send=lambda current, data: current.feed(reply(3).serialize())
+            )
+            sockets.append(sock)
+            return sock
+
+        bus = ESP2TCPSerialInterface(
+            "gateway", socket_factory=factory, delay_message=0,
+            reconnection_timeout=0.01, metrics=metrics,
+        )
+        bus.start()
+        self.assertTrue(bus.is_serial_connected.wait(1))
+        async def run_exchange():
+            return await asyncio.wait_for(
+                bus.exchange(EltakoDiscoveryRequest(3), EltakoDiscoveryReply,
+                             retries=1, timeout=0.5), 1
+            )
+        self.assertEqual(3, asyncio.run(run_exchange()).reported_address)
+        bus.stop()
+        bus.join(1)
+        snapshot = metrics.snapshot()
+        self.assertEqual(1, snapshot.messages_sent)
+        self.assertEqual(1, snapshot.messages_received)
+        self.assertGreaterEqual(snapshot.connection_events, 2)
+
     def test_reconnects_after_gateway_disappears(self):
         sockets = []
 
@@ -137,6 +170,36 @@ class TestESP2TCPSerialInterface(unittest.TestCase):
         bus.stop()
         bus.join(1)
         self.assertFalse(bus.is_alive())
+
+    def test_exchange_without_worker_raises_timeout_without_queue_hang(self):
+        """TCP exchanges before start() or after stop() fail without queueing."""
+        bus = ESP2TCPSerialInterface(
+            "gateway", auto_reconnect=False,
+            socket_factory=lambda *_args: FakeSocket(),
+        )
+
+        async def exchange_before_start():
+            with self.assertRaises(TimeoutError):
+                await asyncio.wait_for(
+                    bus.exchange(EltakoDiscoveryRequest(1), timeout=0.01), 0.1
+                )
+
+        asyncio.run(exchange_before_start())
+        self.assertEqual(0, bus.transmit.unfinished_tasks)
+
+        bus.start()
+        self.assertTrue(bus.is_serial_connected.wait(1))
+        bus.stop()
+        bus.join(1)
+
+        async def exchange_after_stop():
+            with self.assertRaises(TimeoutError):
+                await asyncio.wait_for(
+                    bus.exchange(EltakoDiscoveryRequest(1), timeout=0.01), 0.1
+                )
+
+        asyncio.run(exchange_after_stop())
+        self.assertEqual(0, bus.transmit.unfinished_tasks)
 
     @staticmethod
     def _wait_until(predicate, timeout=1):

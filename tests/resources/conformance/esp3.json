@@ -1,0 +1,67 @@
+{
+  "format_version": 1,
+  "kind": "esp3",
+  "vectors": [
+    {
+      "id": "esp3-regression-response",
+      "status": "executable",
+      "provenance": {
+        "kind": "repository_regression",
+        "source": "tests/esp3_packet_test.py",
+        "note": "Existing native response fixture; this is not an official specification vector."
+      },
+      "wire_hex": "5500030102a600aabb1067",
+      "packet_type": 2,
+      "data_hex": "00aabb",
+      "optional_hex": "10"
+    },
+    {
+      "id": "esp3-regression-event",
+      "status": "executable",
+      "provenance": {
+        "kind": "repository_regression",
+        "source": "tests/esp3_packet_test.py",
+        "note": "Existing native event fixture; this is not an official specification vector."
+      },
+      "wire_hex": "5500030104b40401020310",
+      "packet_type": 4,
+      "data_hex": "040102",
+      "optional_hex": "03"
+    },
+    {
+      "id": "esp3-regression-radio-erp1",
+      "status": "executable",
+      "provenance": {
+        "kind": "repository_regression",
+        "source": "tests/esp3_packet_test.py",
+        "note": "Existing RADIO_ERP1 fixture with seven-byte optional data."
+      },
+      "wire_hex": "55000707017af670010203043003ffffffff5000f5",
+      "packet_type": 1,
+      "data_hex": "f6700102030430",
+      "optional_hex": "03ffffffff5000"
+    },
+    {
+      "id": "esp3-official-response-example",
+      "status": "placeholder",
+      "provenance": {
+        "kind": "official_specification",
+        "document": "EnOcean Serial Protocol 3 specification",
+        "revision": "TBD",
+        "location": "TBD"
+      },
+      "gap": "Transcribe and independently review the complete response frame, including both CRC bytes."
+    },
+    {
+      "id": "esp3-official-radio-erp1-example",
+      "status": "placeholder",
+      "provenance": {
+        "kind": "official_specification",
+        "document": "EnOcean Serial Protocol 3 specification",
+        "revision": "TBD",
+        "location": "TBD"
+      },
+      "gap": "Transcribe and independently review a RADIO_ERP1 frame with optional data."
+    }
+  ]
+}

@@ -46,6 +46,36 @@ class TestESP3MessageAdapter(unittest.TestCase):
         self.assertEqual(len(packet.optional), 7)
         self.assertEqual(packet.optional[-1], 0)
 
+    def test_default_conversion_is_native_and_does_not_need_enocean(self):
+        """The historic packet attributes remain available without the old dependency."""
+        message = Regular4BSMessage(
+            address=bytes.fromhex("ffe5c647"), status=0,
+            data=bytes.fromhex("01000009"), outgoing=False,
+        )
+        packet = self.adapter.convert_esp2_to_esp3(message)
+
+        self.assertEqual(packet.packet_type, 1)
+        self.assertEqual(packet.rorg, 0xA5)
+        self.assertEqual(packet.data, [0xA5, 1, 0, 0, 9, 0xFF, 0xE5, 0xC6, 0x47, 0])
+        self.assertEqual(packet.optional, [0, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0])
+
+    def test_legacy_factory_is_explicit(self):
+        """Legacy enocean packet construction remains an application opt-in."""
+        packets = []
+
+        def factory(data, optional):
+            packet = PacketDouble(data, optional)
+            packets.append(packet)
+            return packet
+
+        message = Regular4BSMessage(
+            address=bytes.fromhex("ffe5c647"), status=0,
+            data=bytes.fromhex("01000009"), outgoing=False,
+        )
+        packet = self.adapter.convert_esp2_to_esp3(message, factory)
+        self.assertIs(packet, packets[0])
+        self.assertEqual(packet.packet_type, 1)
+
     def test_malformed_radio_packet_is_logged_and_ignored(self):
         packet = PacketDouble(data=[0xF6], rorg=0xF6)
         with self.assertLogs("test.esp3", level="WARNING"):

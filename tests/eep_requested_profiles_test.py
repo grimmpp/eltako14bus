@@ -10,8 +10,10 @@ from types import SimpleNamespace
 
 from eltakobus.eep import (
     A5_13_02, A5_13_04, A5_14_01, A5_14_03, A5_14_05,
-    A5_14_07, A5_14_08, D2_00_01, D2_14_40, D2_14_41, EEP,
+    A5_14_07, A5_14_08, D2_00_01, D2_00_01_LegacyWindowHandle,
+    D2_06_01, D2_14_40, D2_14_41, EEP,
 )
+from eltakobus.error import NotImplementedError as EEPNotImplementedError
 from eltakobus.message import Regular4BSMessage, VLDMessage
 from eltakobus.esp3 import ESP3MessageAdapter
 
@@ -78,17 +80,89 @@ class TestRequestedA5Profiles(unittest.TestCase):
 class TestRequestedD2Profiles(unittest.TestCase):
     """Verify MSB-first VLD fields and special-value handling."""
 
-    def test_d20001_decodes_environment_and_handle_fields(self):
-        """D2-00-01 starts with message type and uses 4-bit status fields."""
+    def test_d20601_decodes_environment_and_handle_fields(self):
+        """D2-06-01 uses the documented sensor-values and 4-bit status fields."""
         payload = vld_payload(((0, 8, 0), (8, 4, 1), (16, 4, 3),
                                (40, 8, 125), (48, 8, 100), (56, 16, 1234),
                                (72, 5, 20)))
-        decoded = D2_00_01.decode_message(VLDMessage(bytes(4), 0, payload))
+        decoded = D2_06_01.decode_message(VLDMessage(bytes(4), 0, payload))
         self.assertEqual((1, 3), (decoded.burglary_alarm, decoded.handle_position))
         self.assertAlmostEqual(20.0, decoded.temperature)
         self.assertEqual(50.0, decoded.humidity)
         self.assertEqual(1234.0, decoded.illumination)
         self.assertEqual(100, decoded.battery_state)
+
+    def test_d20601_reports_unsupported_message_type(self):
+        """Only the migrated sensor-values variant is claimed as implemented."""
+        with self.assertRaisesRegex(
+                EEPNotImplementedError, 'message type 0x10 is not implemented'):
+            D2_06_01.decode_message(
+                VLDMessage(bytes(4), 0, bytes((0x10,)) + bytes(9)))
+
+    def test_d20001_decodes_corrected_message_a_layout(self):
+        """Message A uses MsgId at offset 5 and CV/KP in the second byte."""
+        decoded = D2_00_01.decode_message(
+            VLDMessage(bytes(4), 0, bytes((0x01, 0x81))))
+        self.assertEqual((1, 'A', 'sensor_to_gateway'),
+                         (decoded.message_id, decoded.message_type, decoded.direction))
+        self.assertTrue(decoded.config_valid)
+        self.assertEqual(1, decoded.user_action)
+
+    def test_d20001_decodes_documented_message_variants_b_to_e(self):
+        """All documented IDs use the corrected field and little-endian order."""
+        display = D2_00_01.decode_message(
+            VLDMessage(bytes(4), 0, bytes((0xBA, 0x45, 0xD2, 0x04, 0x1B)), True))
+        self.assertEqual((2, 'B', 3, 2, 5, 1234, 12.34),
+                         (display.message_id, display.message_type, display.fan_speed,
+                          display.presence, display.figure_type,
+                          display.figure_value_raw, display.figure_value))
+        self.assertTrue(display.user_notification)
+        self.assertTrue(display.window_open)
+        self.assertTrue(display.cooling)
+        self.assertTrue(display.heating)
+
+        repeated = D2_00_01.decode_message(
+            VLDMessage(bytes(4), 0, bytes((0x53, 0x25, 0x83, 0xFF))))
+        self.assertEqual((3, 5, 1, 5, -125, -1.25),
+                         (repeated.message_id, repeated.fan_speed, repeated.presence,
+                          repeated.setpoint_type, repeated.setpoint_raw,
+                          repeated.setpoint))
+
+        measurement = D2_00_01.decode_message(
+            VLDMessage(bytes(4), 0, bytes((0x04, 0xD2, 0x04))))
+        self.assertEqual((4, 0, 1234, 12.34),
+                         (measurement.message_id, measurement.channel_type,
+                          measurement.measurement_raw, measurement.measurement))
+
+        configuration = D2_00_01.decode_message(
+            VLDMessage(bytes(4), 0, bytes((0x0D, 0x19, 0x05, 0xC0, 0x70, 0x52)), True))
+        self.assertEqual((5, 2.5, 5, 120, 3, 4, 1.0, 20),
+                         (configuration.message_id, configuration.setpoint_range,
+                          configuration.setpoint_steps, configuration.measurement_interval,
+                          configuration.presence_levels, configuration.fan_levels,
+                          configuration.significant_temperature_difference,
+                          configuration.keep_alive_measurements))
+
+    def test_d20001_rejects_old_mislabeled_sensor_payload(self):
+        """The old D2-06 sensor payload must no longer be accepted as D2-00."""
+        payload = vld_payload(((0, 8, 0), (8, 4, 1), (16, 4, 3)), 10)
+        with self.assertRaisesRegex(
+                EEPNotImplementedError, 'message ID 0 is not defined'):
+            D2_00_01.decode_message(VLDMessage(bytes(4), 0, payload))
+
+    def test_d20001_rejects_truncated_variant_precisely(self):
+        """The message ID is reported even when its remaining payload is absent."""
+        with self.assertRaisesRegex(ValueError, 'message B requires at least 5'):
+            D2_00_01.decode_message(VLDMessage(bytes(4), 0, bytes((0x02,))))
+
+    def test_legacy_window_handle_name_is_explicit_and_not_registered(self):
+        """Accidental pre-v2 callers have an explicit decoder migration alias."""
+        payload = vld_payload(((0, 8, 0), (16, 4, 3), (40, 8, 125)), 10)
+        decoded = D2_00_01_LegacyWindowHandle.decode_message(
+            VLDMessage(bytes(4), 0, payload))
+        self.assertIsInstance(decoded, D2_00_01_LegacyWindowHandle)
+        self.assertEqual(3, decoded.handle_position)
+        self.assertIs(D2_06_01, EEP.find('D2-06-01'))
 
     def test_d214_profiles_decode_acceleration_and_contact(self):
         """D2-14-40/41 share sensor fields; -41 adds the contact bit."""
@@ -119,7 +193,7 @@ class TestRequestedD2Profiles(unittest.TestCase):
     def test_profiles_are_registered(self):
         """All requested identifiers remain available through the legacy API."""
         for eep in ('A5-13-02', 'A5-13-04', 'A5-14-01', 'A5-14-03',
-                    'A5-14-05', 'A5-14-07', 'A5-14-08', 'D2-00-01',
+                    'A5-14-05', 'A5-14-07', 'A5-14-08', 'D2-00-01', 'D2-06-01',
                     'D2-14-40', 'D2-14-41'):
             with self.subTest(eep=eep):
                 self.assertEqual(eep, EEP.find(eep).get_metadata().eep)

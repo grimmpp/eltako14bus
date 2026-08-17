@@ -121,13 +121,18 @@ the corresponding physical property is returned as `None`.
 
 | EEP | Name | ORG | Fields and ranges |
 |---|---|---:|---|
-| D2-00-01 | RCP with temperature measurement and display | D2 | handle/window/button/alarm state; `temperature` −20…60 °C; `humidity` 0…100 %; `illumination` 0…60,000 lx; `battery_state` 0…100 % |
+| D2-00-01 | RCP with temperature measurement and display | D2 | message IDs A–E: user actions, display content, repeated set point, temperature measurement and sensor configuration |
+| D2-06-01 | Multisensor window handle | D2 | handle/window/button/alarm state; `temperature` −20…60 °C; `humidity` 0…100 %; `illumination` 0…60,000 lx; `battery_state` 0…100 % |
 | D2-14-40 | Indoor multisensor | D2 | `temperature` −40…60 °C; `humidity` 0…100 %; `illumination` 0…100,000 lx; three-axis acceleration −2.5…2.5 g |
 | D2-14-41 | Indoor multisensor with contact | D2 | D2-14-40 fields plus `contact` 0…1 |
 
 D2-14-40 is marked as a draft proposal in the current EEP Viewer material;
 applications should therefore keep the raw values and tolerate future profile
 revisions.
+
+Before v2, this library accidentally published the D2-06-01 sensor layout as
+`D2_00_01`. See the [D2 migration guide](D2_EEP_MIGRATION.md) when upgrading a
+consumer that used those window-handle or environment fields.
 
 ## Notes on interpretation
 

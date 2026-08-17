@@ -22,6 +22,7 @@ from eltakobus.message import (
     Regular4BSMessage,
 )
 from eltakobus.serial import RS485SerialInterface, RS485SerialInterfaceV2
+from eltakobus.transport_metrics import TransportMetrics
 
 
 class FakeSerialPort:
@@ -107,6 +108,34 @@ class TestRS485SerialInterfaceV2(unittest.TestCase):
 
         self.assertFalse(bus.is_alive())
         self.assertTrue(fake.closed)
+
+    def test_optional_metrics_cover_successful_io_and_status(self):
+        """Metrics are opt-in and count only successful fake-port handoffs."""
+        fake = FakeSerialPort()
+        metrics = TransportMetrics()
+        with patch("eltakobus.serial.serial.serial_for_url", return_value=fake):
+            bus = RS485SerialInterfaceV2(
+                "fake://bus", disabled_echotest=True, auto_reconnect=False,
+                metrics=metrics,
+            )
+            bus.start()
+            self.assertTrue(bus.is_serial_connected.wait(1))
+            bus._send(discovery_reply())
+            fake.feed(discovery_reply(2).serialize())
+            message = asyncio.run(asyncio.wait_for(bus.received.get(), 1))
+            self.assertIsInstance(message, EltakoDiscoveryReply)
+            bus.stop()
+            bus.join(1)
+
+        snapshot = metrics.snapshot()
+        self.assertEqual(1, snapshot.messages_sent)
+        self.assertEqual(1, snapshot.messages_received)
+        self.assertGreaterEqual(snapshot.connection_events, 2)
+
+    def test_metrics_none_preserves_default_constructor_behavior(self):
+        """The default remains uninstrumented and keeps the old public shape."""
+        bus = RS485SerialInterfaceV2("fake://bus", disabled_echotest=True)
+        self.assertIsNone(bus.metrics)
 
     def test_worker_handles_many_frames_while_consumers_run_concurrently(self):
         """Many concurrent readers receive all frames without queue deadlock."""
@@ -294,6 +323,83 @@ class TestRS485SerialInterfaceV2(unittest.TestCase):
         bus.set_callback(lambda message: None)
         self.assertEqual(0, bus.transmit.unfinished_tasks)
 
+    def test_reentrant_receive_callback_does_not_deadlock_worker(self):
+        """A receive callback may reconfigure the bus without blocking its worker."""
+        fake = FakeSerialPort()
+        callback_finished = threading.Event()
+        with patch("eltakobus.serial.serial.serial_for_url", return_value=fake):
+            bus = RS485SerialInterfaceV2(
+                "fake://bus", disabled_echotest=True, auto_reconnect=False
+            )
+
+            def callback(_message):
+                bus.set_callback(None)
+                callback_finished.set()
+
+            bus.set_callback(callback)
+            bus.start()
+            self.assertTrue(bus.is_serial_connected.wait(1))
+            fake.feed(discovery_reply().serialize())
+            self.assertTrue(callback_finished.wait(1))
+            bus.stop()
+            bus.join(1)
+
+        self.assertFalse(bus.is_alive())
+
+    def test_reentrant_status_callback_does_not_deadlock_worker(self):
+        """A connected-status handler may call the transport API safely."""
+        fake = FakeSerialPort()
+        connected_callback_finished = threading.Event()
+        with patch("eltakobus.serial.serial.serial_for_url", return_value=fake):
+            bus = RS485SerialInterfaceV2(
+                "fake://bus", disabled_echotest=True, auto_reconnect=False
+            )
+
+            def status_handler(connected):
+                if connected:
+                    bus.set_callback(None)
+                    connected_callback_finished.set()
+
+            bus.set_status_changed_handler(status_handler)
+            bus.start()
+            self.assertTrue(connected_callback_finished.wait(1))
+            bus.stop()
+            bus.join(1)
+
+        self.assertFalse(bus.is_alive())
+
+    def test_exchange_before_start_returns_without_queue_hang(self):
+        """An exchange before start() remains bounded and does not queue a send."""
+        bus = RS485SerialInterfaceV2("fake://bus", disabled_echotest=True)
+
+        async def exchange_before_start():
+            return await asyncio.wait_for(
+                bus.exchange(EltakoDiscoveryRequest(1), timeout=0.01), 0.1
+            )
+
+        self.assertIsNone(asyncio.run(exchange_before_start()))
+        self.assertEqual(0, bus.transmit.unfinished_tasks)
+
+    def test_exchange_after_stop_returns_without_queue_hang(self):
+        """An exchange after stop() remains bounded and does not queue a send."""
+        fake = FakeSerialPort()
+        with patch("eltakobus.serial.serial.serial_for_url", return_value=fake):
+            bus = RS485SerialInterfaceV2(
+                "fake://bus", disabled_echotest=True, auto_reconnect=False
+            )
+            bus.start()
+            self.assertTrue(bus.is_serial_connected.wait(1))
+            bus.stop()
+            bus.join(1)
+
+        async def exchange_after_stop():
+            return await asyncio.wait_for(
+                bus.exchange(EltakoDiscoveryRequest(1), timeout=0.01), 0.1
+            )
+
+        self.assertIsNone(asyncio.run(exchange_after_stop()))
+        self.assertEqual(0, bus.transmit.unfinished_tasks)
+
 
 class TestRS485SerialInterfaceLegacy(unittest.TestCase):
     """Cover buffer and connection lifecycle behavior of the legacy protocol."""
@@ -304,6 +410,32 @@ class TestRS485SerialInterfaceLegacy(unittest.TestCase):
             bus = RS485SerialInterface("fake://bus", suppress_echo=False)
             bus.data_received(b"x" * 14)
             await asyncio.wait_for(bus.await_bufferlevel(14), 0.1)
+
+        asyncio.run(scenario())
+
+    def test_optional_metrics_cover_connection_and_successful_send(self):
+        """The legacy protocol reports status and writes without hardware."""
+        class FakeTransport:
+            def __init__(self):
+                self.writes = []
+
+            def write(self, data):
+                self.writes.append(bytes(data))
+
+        async def scenario():
+            metrics = TransportMetrics()
+            bus = RS485SerialInterface("fake://bus", suppress_echo=False,
+                                       metrics=metrics)
+            bus.transport = asyncio.get_running_loop().create_future()
+            fake = FakeTransport()
+            bus.connection_made(fake)
+            bus.transport = fake
+            await bus.send(discovery_reply())
+            bus.connection_lost(None)
+            snapshot = metrics.snapshot()
+            self.assertEqual(1, snapshot.messages_sent)
+            self.assertEqual(2, snapshot.connection_events)
+            self.assertEqual([discovery_reply().serialize()], fake.writes)
 
         asyncio.run(scenario())
 
