@@ -10,7 +10,7 @@ and connection-loss behavior.
 import asyncio
 import logging
 import queue
-import serial
+import serialx
 import threading
 import time
 import unittest
@@ -33,21 +33,32 @@ class FakeSerialPort:
         self._on_write = on_write
         self.fail_reads = threading.Event()
         self.writes = []
+        self.opened = False
         self.closed = False
+
+    def open(self):
+        """serialx ports are created closed and must be opened explicitly."""
+        self.opened = True
 
     def feed(self, data):
         """Make serialized bytes available to the worker's next read."""
         with self._lock:
             self._incoming.extend(data)
 
-    def read_all(self):
-        """Return pending bytes, or simulate an unplugged adapter once."""
+    @property
+    def in_waiting(self):
+        """Report pending bytes, or simulate an unplugged adapter once."""
         if self.fail_reads.is_set():
             self.fail_reads.clear()
-            raise serial.SerialException("simulated serial interface disappearance")
+            raise serialx.SerialException("simulated serial interface disappearance")
         with self._lock:
-            data = bytes(self._incoming)
-            self._incoming.clear()
+            return len(self._incoming)
+
+    def read(self, size):
+        """Return up to ``size`` pending bytes."""
+        with self._lock:
+            data = bytes(self._incoming[:size])
+            del self._incoming[:size]
             return data
 
     def write(self, data):
@@ -89,7 +100,7 @@ class TestRS485SerialInterfaceV2(unittest.TestCase):
     def test_worker_reads_real_frames_and_stops_without_hanging(self):
         """A valid incoming frame is delivered and the worker stops cleanly."""
         fake = FakeSerialPort()
-        with patch("eltakobus.serial.serial.serial_for_url", return_value=fake):
+        with patch("eltakobus.serial.serialx.serial_for_url", return_value=fake):
             bus = RS485SerialInterfaceV2(
                 "fake://bus", disabled_echotest=True, auto_reconnect=False
             )
@@ -112,7 +123,7 @@ class TestRS485SerialInterfaceV2(unittest.TestCase):
         """Many concurrent readers receive all frames without queue deadlock."""
         fake = FakeSerialPort()
         frames = [regular_4bs(bytes((0, 0, 0, address))) for address in range(1, 33)]
-        with patch("eltakobus.serial.serial.serial_for_url", return_value=fake):
+        with patch("eltakobus.serial.serialx.serial_for_url", return_value=fake):
             bus = RS485SerialInterfaceV2(
                 "fake://bus", disabled_echotest=True, auto_reconnect=False
             )
@@ -150,7 +161,7 @@ class TestRS485SerialInterfaceV2(unittest.TestCase):
             fake.feed(unrelated.serialize() + reply.serialize())
 
         fake = FakeSerialPort(on_write=answer)
-        with patch("eltakobus.serial.serial.serial_for_url", return_value=fake):
+        with patch("eltakobus.serial.serialx.serial_for_url", return_value=fake):
             bus = RS485SerialInterfaceV2(
                 "fake://bus", disabled_echotest=True, auto_reconnect=False
             )
@@ -173,7 +184,7 @@ class TestRS485SerialInterfaceV2(unittest.TestCase):
     def test_exchange_serializes_concurrent_callers_instead_of_hanging(self):
         """Concurrent transactions finish independently instead of corrupting state."""
         fake = FakeSerialPort()
-        with patch("eltakobus.serial.serial.serial_for_url", return_value=fake):
+        with patch("eltakobus.serial.serialx.serial_for_url", return_value=fake):
             bus = RS485SerialInterfaceV2(
                 "fake://bus", disabled_echotest=True, auto_reconnect=False
             )
@@ -221,7 +232,7 @@ class TestRS485SerialInterfaceV2(unittest.TestCase):
         test_log = logging.getLogger("eltakobus.serial.reconnect_test")
         test_log.propagate = False
         test_log.addHandler(logging.NullHandler())
-        with patch("eltakobus.serial.serial.serial_for_url", side_effect=serial_factory):
+        with patch("eltakobus.serial.serialx.serial_for_url", side_effect=serial_factory):
             bus = RS485SerialInterfaceV2(
                 "fake://disappearing-bus",
                 log=test_log,

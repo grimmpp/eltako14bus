@@ -56,7 +56,17 @@ def _links(directory):
     return result
 
 
-def _pyserial_ports():
+def _system_ports():
+    """List serial ports via serialx, falling back to pyserial if installed."""
+    try:
+        import serialx
+    except ImportError:
+        pass
+    else:
+        try:
+            return list(serialx.list_serial_ports())
+        except Exception:
+            return []
     try:
         from serial.tools import list_ports
     except ImportError:
@@ -99,12 +109,12 @@ def scan_serial_ports(*, device_globs=DEVICE_GLOBS, by_id_dir=SERIAL_BY_ID_DIR,
     for pattern in device_globs:
         for device in glob.glob(pattern):
             get(device)
-    for port in _pyserial_ports() if ports is None else ports:
+    for port in _system_ports() if ports is None else ports:
         info = get(port.device)
         info.manufacturer = info.manufacturer or _value(port, "manufacturer")
         info.product = info.product or _value(port, "product", "description")
         info.serial_number = info.serial_number or _value(port, "serial_number")
-        info.interface = info.interface or _value(port, "interface")
+        info.interface = info.interface or _value(port, "interface", "interface_description")
     for name, device in _links(by_id_dir).items():
         info = get(device)
         info.by_id = os.path.join(by_id_dir, name)

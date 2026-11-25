@@ -1,6 +1,5 @@
 # Runtime and transport dependencies
-pyserial >= 3.4
-pyserial-asyncio
+serialx >= 1.0
 aiocoap >= 0.4.17, < 1
 PyYAML
 pyxdg

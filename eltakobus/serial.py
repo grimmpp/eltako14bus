@@ -4,9 +4,8 @@ import logging
 
 import threading
 import queue
-import serial
 
-import serial_asyncio
+import serialx
 
 from eltakobus import locking
 
@@ -212,12 +211,28 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
             # send echo
             self.__serial.write(echotest)
             # receive echo
-            response = self.__serial.read_until( echotest )
+            try:
+                response = self.__serial.read_until( echotest )
+            except asyncio.IncompleteReadError as e:
+                # pyserial returned the partial data on timeout; serialx raises.
+                response = e.partial
+            except TimeoutError:
+                response = b''
 
             if echotest == response: return True
             
         return False
 
+
+    def _read_available(self) -> bytes:
+        """Return the bytes that are already waiting, without blocking.
+
+        Equivalent of pyserial's ``read_all()``, which serialx does not provide.
+        """
+        waiting = self.__serial.in_waiting
+        if not waiting:
+            return b''
+        return self.__serial.read(waiting)
 
     def is_active(self) -> bool:
         return not self._stop_flag.is_set() and self.is_serial_connected.is_set()
@@ -245,7 +260,10 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                 with self.__mutex:
                     # reconnect
                     if self.__serial is None:
-                        self.__serial = serial.serial_for_url(self._filename, self._baud_rate, timeout=0.1, write_timeout=0.1)
+                        serial_port = serialx.serial_for_url(self._filename, baudrate=self._baud_rate, read_timeout=0.1, write_timeout=0.1)
+                        # Unlike pyserial, serialx does not open the port on creation.
+                        serial_port.open()
+                        self.__serial = serial_port
                         self.log.info("Established serial connection to %s - baud rate: %d", self._filename, self._baud_rate)
                         
                         if not self.disabled_echotest:
@@ -283,7 +301,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                                 self.transmit.task_done()
 
                     # read from bus
-                    self._buffer.extend( self.__serial.read_all() )
+                    self._buffer.extend( self._read_available() )
 
                     # process received messages from bus
                     error_buffer = []
@@ -326,7 +344,7 @@ class RS485SerialInterfaceV2(BusInterface, threading.Thread):
                 time.sleep(.00001)
                 
 
-            except (serial.SerialException, IOError) as e:
+            except (serialx.SerialException, OSError) as e:
                 self._fire_status_change_handler(connected=False)
                 self.is_serial_connected.clear()
                 self.log.exception(e)
@@ -513,7 +531,7 @@ class RS485SerialInterface(BusInterface, asyncio.Protocol):
         if self.transport is not None:
             raise RuntimeError("Serial interface run twice")
         self.transport = asyncio.Future()
-        await serial_asyncio.create_serial_connection(
+        await serialx.create_serial_connection(
                 loop,
                 protocol_factory=lambda: self,
                 url=self._filename,

@@ -2,7 +2,9 @@
 import setuptools
 
 extras_require = {
-    'serial': ['pyserial-asyncio', 'pyserial >= 3.4'],
+    # serialx replaces pyserial and pyserial-asyncio; Home Assistant requires it
+    # for serial integrations from 2027.2 on.
+    'serial': ['serialx >= 1.0'],
     # aiocoap 0.4a1 uses the removed asyncio.coroutine API and is not
     # compatible with the Python versions supported by this project.
     'coap': ['aiocoap >= 0.4.17, < 1'],

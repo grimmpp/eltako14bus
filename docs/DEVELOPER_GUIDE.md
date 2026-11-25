@@ -219,7 +219,8 @@ asyncio protocol lifecycle.
 
 The library also contains the reusable parts of the standalone gateway tools
 from the Home Assistant Eltako integration. `scan_serial_ports()` performs a
-passive scan and returns `SerialPortInfo` objects with pyserial descriptors,
+passive scan and returns `SerialPortInfo` objects with serialx (or, if
+installed, pyserial) port descriptors,
 stable `/dev/serial/by-id` links, and non-authoritative device-type hints. It
 never opens or writes a port:
 
@@ -562,7 +563,9 @@ signature. `eltakotool_test.py` calls `eltakotool.build_arg_parser()` directly
 to check option defaults and types (for example, that `--serial_lib_version`
 and `--baud_rate` parse to `int`, not `str`) without touching a real bus, and
 exercises `fakefam()`'s serial-vs-socket fallback with patched
-`serial_asyncio`/`asyncio` calls. A small offline smoke test for message
+`serialx`/`asyncio` calls. `serialx_pty_test.py` runs both serial transports
+over a real pseudo-terminal (Linux/macOS), so serialx itself is exercised
+without hardware. A small offline smoke test for message
 serialization is also useful when developing a transport:
 
 ```python

@@ -14,7 +14,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-import serial
+import serialx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -218,7 +218,7 @@ class TestFakefam(unittest.TestCase):
 
         async def scenario():
             with patch(
-                "eltakotool.serial_asyncio.create_serial_connection",
+                "eltakotool.serialx.create_serial_connection",
                 fake_create_serial_connection,
             ), patch("eltakotool.run_fakefam", fake_run_fakefam):
                 await eltakotool.fakefam(object(), "/dev/ttyFAKE", baud_rate=9600)
@@ -229,7 +229,7 @@ class TestFakefam(unittest.TestCase):
 
     def test_falls_back_to_unix_socket_without_invalid_loop_kwarg(self):
         async def fake_create_serial_connection(loop, protocol_factory, device, baudrate):
-            raise serial.serialutil.SerialException("no such serial port")
+            raise serialx.SerialException("no such serial port")
 
         async def fake_start_unix_server(client_connected_cb, path):
             client_connected_cb.keywords["conn_made"].set_result(None)
@@ -238,7 +238,7 @@ class TestFakefam(unittest.TestCase):
 
         async def scenario():
             with patch(
-                "eltakotool.serial_asyncio.create_serial_connection",
+                "eltakotool.serialx.create_serial_connection",
                 fake_create_serial_connection,
             ), patch(
                 "eltakotool.asyncio.start_unix_server", fake_start_unix_server

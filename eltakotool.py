@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 import logging
 
+import serialx
+
 from typing import Optional
 
 import xdg.BaseDirectory
@@ -119,11 +121,11 @@ async def fakefam(bus, serverdevice, baud_rate=57600):
     try:
         reader = asyncio.StreamReader()
         protocol = asyncio.StreamReaderProtocol(reader)
-        transport, _ = await serial_asyncio.create_serial_connection(loop, lambda: protocol, serverdevice, baudrate=baud_rate)
+        transport, _ = await serialx.create_serial_connection(loop, lambda: protocol, serverdevice, baudrate=baud_rate)
         writer = asyncio.StreamWriter(transport, protocol, reader, loop)
         await run_fakefam(bus, reader, writer)
         return
-    except serial.serialutil.SerialException:
+    except (serialx.SerialException, OSError):
         pass
 
     conn_end = asyncio.Future()
