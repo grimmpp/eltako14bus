@@ -11,8 +11,9 @@ This project adheres to [Semantic Versioning](http://semver.org/).
   `eltakotool`. `pyserial-asyncio` was only declared as an optional extra while
   `eltakobus.serial` imported it unconditionally, so it broke as soon as Home
   Assistant 2026.10 stopped shipping it; Home Assistant also rejects
-  `pyserial-asyncio` requirements from 2027.2 on. The `serial` extra now
-  installs `serialx >= 1.0`.
+  `pyserial-asyncio` requirements from 2027.2 on. `serialx >= 1.0` is now a
+  regular dependency, because `import eltakobus` always imports the serial
+  module; the `serial` extra is kept as an empty alias.
 - `RS485SerialInterfaceV2` opens the port explicitly and reads the waiting
   bytes with `in_waiting`/`read()`, as serialx has no `read_all()`. The echo
   test treats serialx's `IncompleteReadError` on timeout like pyserial's

@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 import setuptools
 
+# eltakobus.serial (imported by eltakobus/__init__.py) needs serialx, so it is a
+# hard dependency. serialx replaces pyserial and pyserial-asyncio; Home
+# Assistant rejects pyserial-asyncio requirements from 2027.2 on.
+install_requires = ['serialx >= 1.0']
+
 extras_require = {
-    # serialx replaces pyserial and pyserial-asyncio; Home Assistant requires it
-    # for serial integrations from 2027.2 on.
-    'serial': ['serialx >= 1.0'],
+    # Kept for backwards compatibility; serialx is now always installed.
+    'serial': [],
     # aiocoap 0.4a1 uses the removed asyncio.coroutine API and is not
     # compatible with the Python versions supported by this project.
     'coap': ['aiocoap >= 0.4.17, < 1'],
@@ -28,6 +32,7 @@ setuptools.setup(
     # the installable library wheel.
     packages=setuptools.find_packages(include=["eltakobus", "eltakobus.*"]),
     python_requires=">=3.10",
+    install_requires=install_requires,
     extras_require=extras_require,
     long_description_content_type="text/markdown",
     long_description=long_description,
